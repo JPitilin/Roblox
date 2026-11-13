@@ -33,7 +33,8 @@ function Movimento.update(player, level, direction, jump)
 	local width, height = Movimento.width, Movimento.height
 	player.buffer = if jump then 0.12 else math.max(0, player.buffer - dt)
 	player.coyote = if player.grounded then 0.085 else math.max(0, player.coyote - dt)
-	if player.buffer > 0 and player.coyote > 0 then
+	local jumped = player.buffer > 0 and player.coyote > 0
+	if jumped then
 		player.vy = -JUMP
 		player.buffer = 0
 		player.coyote = 0
@@ -68,6 +69,7 @@ function Movimento.update(player, level, direction, jump)
 		player.vy = 0
 	end
 	player.y = nextY
+	return jumped
 end
 
 return Movimento

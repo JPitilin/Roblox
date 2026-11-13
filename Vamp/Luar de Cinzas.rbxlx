@@ -836,6 +836,7 @@ gcLgc4RKxr21zq2UlJSM]]></BinaryString>
 					<ProtectedString name="Source">local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local SoundService = game:GetService("SoundService")
 local StarterGui = game:GetService("StarterGui")
 local UserInputService = game:GetService("UserInputService")
 
@@ -845,6 +846,20 @@ local Movimento = require(script.Movimento)
 
 local VIEW_WIDTH = 384
 local VIEW_HEIGHT = Fase.height
+
+local function createSound(name, asset, volume, looped)
+	local sound = Instance.new("Sound")
+	sound.Name = name
+	sound.SoundId = asset
+	sound.Volume = volume
+	sound.Looped = looped
+	sound.Parent = SoundService
+	return sound
+end
+
+local music = createSound("Trilha do cemitério", "rbxassetid://1842988873", 0.18, true)
+local jumpSound = createSound("Pulo do Nino", "rbxasset://sounds/action_jump.mp3", 0.28, false)
+local hitSound = createSound("Nino atingido", "rbxasset://sounds/ouch.ogg", 0.5, false)
 local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 local screen = Instance.new("ScreenGui")
 screen.Name = "Luar de Cinzas"
@@ -1059,6 +1074,11 @@ local function restart()
 	updateCounter()
 end
 
+local function takeHit()
+	hitSound:Play()
+	respawn()
+end
+
 local function clearInput()
 	left, right, jumpQueued = false, false, false
 end
@@ -1101,8 +1121,11 @@ end
 
 local function simulate(direction)
 	elapsed += Movimento.step
-	Movimento.update(player, Fase, direction, jumpQueued)
+	local jumped = Movimento.update(player, Fase, direction, jumpQueued)
 	jumpQueued = false
+	if jumped then
+		jumpSound:Play()
+	end
 	for _, mummy in mummies do
 		local path = mummy.path
 		local length = path.right - path.left
@@ -1116,7 +1139,7 @@ local function simulate(direction)
 	end
 	for _, mummy in mummies do
 		if Movimento.touches(player, mummy.x - 5, mummy.path.y - 21, 10, 21) then
-			respawn()
+			takeHit()
 			return
 		end
 	end
@@ -1125,7 +1148,7 @@ local function simulate(direction)
 		bat.x = bat.path.x + math.sin(phase) * bat.path.range
 		bat.y = bat.path.y + math.sin(phase * 1.65) * 4
 		if Movimento.touches(player, bat.x - 5, bat.y - 2, 10, 5) then
-			respawn()
+			takeHit()
 			return
 		end
 	end
@@ -1257,6 +1280,7 @@ updateCounter()
 updateShop()
 render(0)
 RunService.PreRender:Connect(render)
+music:Play()
 </ProtectedString>
 					<bool name="Disabled">false</bool>
 					<Content name="LinkedSource"><null></null></Content>
@@ -1759,7 +1783,7 @@ return Arte
 				<Item class="ModuleScript" referent="RBX8">
 					<Properties>
 						<Content name="LinkedSource"><null></null></Content>
-						<ProtectedString name="Source"><![CDATA[local Movimento = {}
+						<ProtectedString name="Source">local Movimento = {}
 
 Movimento.width = 10
 Movimento.height = 19
@@ -1770,7 +1794,7 @@ local JUMP = 218
 local GRAVITY = 604
 
 local function overlaps(a, sizeA, b, sizeB)
-	return a < b + sizeB and a + sizeA > b
+	return a &lt; b + sizeB and a + sizeA &gt; b
 end
 
 function Movimento.new(point)
@@ -1794,7 +1818,8 @@ function Movimento.update(player, level, direction, jump)
 	local width, height = Movimento.width, Movimento.height
 	player.buffer = if jump then 0.12 else math.max(0, player.buffer - dt)
 	player.coyote = if player.grounded then 0.085 else math.max(0, player.coyote - dt)
-	if player.buffer > 0 and player.coyote > 0 then
+	local jumped = player.buffer &gt; 0 and player.coyote &gt; 0
+	if jumped then
 		player.vy = -JUMP
 		player.buffer = 0
 		player.coyote = 0
@@ -1803,9 +1828,9 @@ function Movimento.update(player, level, direction, jump)
 	local nextX = math.clamp(player.x + direction * SPEED * dt, 0, level.width - width)
 	for _, block in level.platforms do
 		if overlaps(player.y, height, block.y, block.h) and overlaps(nextX, width, block.x, block.w) then
-			if player.x + width <= block.x then
+			if player.x + width &lt;= block.x then
 				nextX = block.x - width
-			elseif player.x >= block.x + block.w then
+			elseif player.x &gt;= block.x + block.w then
 				nextX = block.x + block.w
 			end
 		end
@@ -1817,10 +1842,10 @@ function Movimento.update(player, level, direction, jump)
 	player.grounded = false
 	for _, block in level.platforms do
 		if overlaps(player.x, width, block.x, block.w) then
-			if player.y + height <= block.y and nextY + height >= block.y then
+			if player.y + height &lt;= block.y and nextY + height &gt;= block.y then
 				nextY = block.y - height
 				player.grounded = true
-			elseif player.y >= block.y + block.h and nextY <= block.y + block.h then
+			elseif player.y &gt;= block.y + block.h and nextY &lt;= block.y + block.h then
 				nextY = block.y + block.h
 			end
 		end
@@ -1829,10 +1854,11 @@ function Movimento.update(player, level, direction, jump)
 		player.vy = 0
 	end
 	player.y = nextY
+	return jumped
 end
 
 return Movimento
-]]></ProtectedString>
+</ProtectedString>
 						<string name="ScriptGuid">{227F0C7A-9A19-42E9-B408-9447F6166C94}</string>
 						<BinaryString name="AttributesSerialize"></BinaryString>
 						<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>

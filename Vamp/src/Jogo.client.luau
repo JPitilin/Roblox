@@ -1,6 +1,7 @@
 local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local SoundService = game:GetService("SoundService")
 local StarterGui = game:GetService("StarterGui")
 local UserInputService = game:GetService("UserInputService")
 
@@ -10,6 +11,20 @@ local Movimento = require(script.Movimento)
 
 local VIEW_WIDTH = 384
 local VIEW_HEIGHT = Fase.height
+
+local function createSound(name, asset, volume, looped)
+	local sound = Instance.new("Sound")
+	sound.Name = name
+	sound.SoundId = asset
+	sound.Volume = volume
+	sound.Looped = looped
+	sound.Parent = SoundService
+	return sound
+end
+
+local music = createSound("Trilha do cemitério", "rbxassetid://1842988873", 0.18, true)
+local jumpSound = createSound("Pulo do Nino", "rbxasset://sounds/action_jump.mp3", 0.28, false)
+local hitSound = createSound("Nino atingido", "rbxasset://sounds/ouch.ogg", 0.5, false)
 local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 local screen = Instance.new("ScreenGui")
 screen.Name = "Luar de Cinzas"
@@ -224,6 +239,11 @@ local function restart()
 	updateCounter()
 end
 
+local function takeHit()
+	hitSound:Play()
+	respawn()
+end
+
 local function clearInput()
 	left, right, jumpQueued = false, false, false
 end
@@ -266,8 +286,11 @@ end
 
 local function simulate(direction)
 	elapsed += Movimento.step
-	Movimento.update(player, Fase, direction, jumpQueued)
+	local jumped = Movimento.update(player, Fase, direction, jumpQueued)
 	jumpQueued = false
+	if jumped then
+		jumpSound:Play()
+	end
 	for _, mummy in mummies do
 		local path = mummy.path
 		local length = path.right - path.left
@@ -281,7 +304,7 @@ local function simulate(direction)
 	end
 	for _, mummy in mummies do
 		if Movimento.touches(player, mummy.x - 5, mummy.path.y - 21, 10, 21) then
-			respawn()
+			takeHit()
 			return
 		end
 	end
@@ -290,7 +313,7 @@ local function simulate(direction)
 		bat.x = bat.path.x + math.sin(phase) * bat.path.range
 		bat.y = bat.path.y + math.sin(phase * 1.65) * 4
 		if Movimento.touches(player, bat.x - 5, bat.y - 2, 10, 5) then
-			respawn()
+			takeHit()
 			return
 		end
 	end
@@ -422,3 +445,4 @@ updateCounter()
 updateShop()
 render(0)
 RunService.PreRender:Connect(render)
+music:Play()
