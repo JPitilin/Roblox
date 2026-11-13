@@ -1,5 +1,40 @@
 $ErrorActionPreference = 'Stop'
 $destination = Join-Path $PSScriptRoot 'Luar de Cinzas.rbxlx'
+$sources = [ordered]@{
+    Jogo = 'Jogo.client.luau'
+    Arte = 'Arte.luau'
+    Fase = 'Fase.luau'
+    Movimento = 'Movimento.luau'
+    Sessao = 'Sessao.server.luau'
+}
+
+if ([System.IO.File]::Exists($destination)) {
+    $place = [System.Xml.XmlDocument]::new()
+    $place.PreserveWhitespace = $true
+    $place.Load($destination)
+
+    foreach ($name in $sources.Keys) {
+        $path = "Item[Properties/string[@name='Name']='$name']/Properties/ProtectedString[@name='Source']"
+        $sourceNodes = $place.SelectNodes("//$path")
+        if ($sourceNodes.Count -ne 1) {
+            throw "Expected exactly one embedded script named '$name' in Luar de Cinzas.rbxlx."
+        }
+        $sourceFile = Join-Path $PSScriptRoot "src/$($sources[$name])"
+        $sourceNodes[0].InnerText = [System.IO.File]::ReadAllText($sourceFile)
+    }
+
+    $temporary = "$destination.$([System.Guid]::NewGuid().ToString('N')).tmp"
+    try {
+        $place.Save($temporary)
+        [System.IO.File]::Replace($temporary, $destination, [System.Management.Automation.Language.NullString]::Value)
+    }
+    finally {
+        [System.IO.File]::Delete($temporary)
+    }
+    Write-Output $destination
+    return
+}
+
 $settings = [System.Xml.XmlWriterSettings]::new()
 $settings.Indent = $true
 $settings.Encoding = [System.Text.UTF8Encoding]::new($false)
