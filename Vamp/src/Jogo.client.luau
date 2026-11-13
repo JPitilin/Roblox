@@ -106,7 +106,6 @@ local header = Arte.rect(viewport, 0, 0, VIEW_WIDTH, 33, 10, 11)
 header.BackgroundTransparency = 0.12
 Arte.rect(viewport, 0, 33, VIEW_WIDTH, 1, 66, 11)
 Arte.text(header, "LUAR DE CINZAS", 12, 3, 190, 14, 12, 240)
-Arte.text(header, "Nino  /  Cemitério", 12, 17, 175, 12, 9, 170)
 local timer = Arte.text(header, "", 140, 3, 86, 14, 10, 231)
 timer.TextXAlignment = Enum.TextXAlignment.Center
 local lifeIcons = {}
@@ -115,10 +114,11 @@ for i = 1, Fase.startingLives do
 end
 local counter = Arte.text(header, "", 288, 3, 84, 14, 10, 231)
 counter.TextXAlignment = Enum.TextXAlignment.Right
-local hint = Arte.text(header, "A/D  mover   ESPAÇO  saltar", 227, 17, 145, 12, 9, 183)
+local hint = Arte.text(header, "A/D mover  ESPAÇO pular", 251, 17, 121, 12, 9, 183)
 hint.TextXAlignment = Enum.TextXAlignment.Right
-local shopToggle = Arte.text(header, "", 117, 17, 110, 12, 9, Color3.fromRGB(194, 222, 245), true)
-shopToggle.TextXAlignment = Enum.TextXAlignment.Center
+local shopToggle = Arte.text(header, "", 12, 17, 91, 12, 9, Color3.fromRGB(194, 222, 245), true)
+local fragmentCounter = Arte.text(header, "", 106, 17, 63, 12, 9, 183)
+local rankingToggle = Arte.text(header, "T RECORDES", 180, 17, 68, 12, 9, Color3.fromRGB(194, 222, 245), true)
 
 local panel = Arte.rect(viewport, 52, 54, 280, 130, 15, 11)
 Arte.rect(panel, 0, 0, 280, 1, 153, 11)
@@ -175,6 +175,24 @@ for i, outfit in outfits do
 end
 shop.Visible = false
 
+local leaderboard = Arte.rect(viewport, 48, 42, 288, 161, 19, 11)
+Arte.rect(leaderboard, 0, 0, 288, 1, 134, 11)
+Arte.rect(leaderboard, 0, 160, 288, 1, 134, 11)
+Arte.text(leaderboard, "MELHORES TEMPOS", 12, 5, 170, 18, 13, 240)
+local closeRanking = Arte.text(leaderboard, "T FECHAR", 209, 5, 67, 18, 10, 210, true)
+closeRanking.TextXAlignment = Enum.TextXAlignment.Right
+local rankingStatus = Arte.text(leaderboard, "", 12, 25, 264, 12, 9, 193)
+local rankingRows = {}
+for i = 1, 10 do
+	local y = 39 + (i - 1) * 11
+	local name = Arte.text(leaderboard, "", 12, y, 184, 11, 9, 229)
+	name.TextTruncate = Enum.TextTruncate.AtEnd
+	local time = Arte.text(leaderboard, "", 205, y, 71, 11, 9, 229)
+	time.TextXAlignment = Enum.TextXAlignment.Right
+	rankingRows[i] = { name = name, time = time }
+end
+leaderboard.Visible = false
+
 local player = Movimento.new(Fase.start)
 local cameraX = 0
 local elapsed = 0
@@ -217,8 +235,9 @@ end
 
 local function updateShop()
 	local balance, unlocked = capeProgress()
-	shopToggle.Text = string.format("C CAPAS  |  LUA %d/%d", foundFragments, #fragments)
-	shopBalance.Text = string.format("Saldo: %d fragmentos  |  Capas extras: %d/%d", balance, unlocked, #outfits - 1)
+	shopToggle.Text = string.format("C CAPAS %d/%d", unlocked + 1, #outfits)
+	fragmentCounter.Text = string.format("LUA %d/%d", foundFragments, #fragments)
+	shopBalance.Text = string.format("Saldo: %d fragmentos  |  Capas: %d/%d", balance, unlocked + 1, #outfits)
 	for _, outfit in outfits do
 		local available = equipped ~= outfit.id and (owned[outfit.id] or balance >= outfit.cost)
 		local button = outfit.button
@@ -247,11 +266,16 @@ for _, outfit in outfits do
 	end)
 end
 
-local function toggleShop()
-	shop.Visible = not shop.Visible
-	panel.Visible = (won or lives == 0) and not shop.Visible
+local function toggleMenu(menu)
+	local open = not menu.Visible
+	shop.Visible = open and menu == shop
+	leaderboard.Visible = open and menu == leaderboard
+	panel.Visible = (won or lives == 0) and not open
 	left, right, jumpQueued = false, false, false
 	accumulator = 0
+end
+local function toggleShop()
+	toggleMenu(shop)
 end
 shopToggle.Activated:Connect(toggleShop)
 closeShop.Activated:Connect(toggleShop)
@@ -281,11 +305,41 @@ local function requestRecord(action, milliseconds, name)
 	if not remote then
 		return false
 	end
-	local called, ok, record = pcall(function()
+	local called, ok, record, ranked = pcall(function()
 		return remote:InvokeServer(action, milliseconds, name)
 	end)
-	return called and ok, record
+	return called and ok, record, ranked
 end
+
+local rankingRevision = 0
+local function toggleRanking()
+	toggleMenu(leaderboard)
+	rankingRevision += 1
+	if not leaderboard.Visible then
+		return
+	end
+	local revision = rankingRevision
+	rankingStatus.Text = "Carregando..."
+	for _, row in rankingRows do
+		row.name.Text = ""
+		row.time.Text = ""
+	end
+	task.spawn(function()
+		local ok, records = requestRecord("listar")
+		if revision ~= rankingRevision or not leaderboard.Visible then
+			return
+		end
+		rankingStatus.Text = if not ok then "Recordes indisponíveis. Reabra para tentar."
+			elseif #records == 0 then "Nenhum recorde salvo."
+			elseif RunService:IsStudio() then "Recordes desta sessão" else "10 melhores da fase"
+		for i, record in records or {} do
+			rankingRows[i].name.Text = string.format("%02d  %s", i, record.name)
+			rankingRows[i].time.Text = formatRecord(record.milliseconds)
+		end
+	end)
+end
+rankingToggle.Activated:Connect(toggleRanking)
+closeRanking.Activated:Connect(toggleRanking)
 
 local function saveBest()
 	if not won or not panel.Visible or savingRecord then
@@ -302,7 +356,7 @@ local function saveBest()
 	savingRecord = true
 	saveRecord.Interactable = false
 	recordStatus.Text = "Salvando..."
-	local ok, record = requestRecord("salvar", completedTime, name)
+	local ok, record, ranked = requestRecord("salvar", completedTime, name)
 	if revision ~= recordRevision then
 		return
 	end
@@ -313,7 +367,8 @@ local function saveBest()
 		return
 	end
 	showBest(record)
-	recordStatus.Text = if record.milliseconds < completedTime then "Seu melhor tempo foi mantido."
+	recordStatus.Text = if not ranked then "Salvo. Tente novamente para atualizar o ranking."
+		elseif record.milliseconds < completedTime then "Seu melhor tempo foi mantido."
 		elseif RunService:IsStudio() then "Recorde salvo neste teste." else "Recorde salvo."
 end
 saveRecord.Activated:Connect(saveBest)
@@ -353,7 +408,7 @@ local function restart()
 	left, right = false, false
 	panel.Visible = false
 	setCheckpointLight(false)
-	hint.Text = "A/D  mover   ESPAÇO  saltar"
+	hint.Text = "A/D mover  ESPAÇO pular"
 	for _, relic in relics do
 		relic.art.Visible = true
 	end
@@ -407,7 +462,13 @@ ContextActionService:BindActionAtPriority("LuarControls", function(_, state, inp
 		end
 		return Enum.ContextActionResult.Sink
 	end
-	if shop.Visible then
+	if input.KeyCode == Enum.KeyCode.T then
+		if down then
+			toggleRanking()
+		end
+		return Enum.ContextActionResult.Sink
+	end
+	if shop.Visible or leaderboard.Visible then
 		return Enum.ContextActionResult.Sink
 	end
 	if won or lives == 0 then
@@ -424,7 +485,7 @@ ContextActionService:BindActionAtPriority("LuarControls", function(_, state, inp
 		jumpQueued = true
 	end
 	return Enum.ContextActionResult.Sink
-end, false, Enum.ContextActionPriority.High.Value, Enum.KeyCode.A, Enum.KeyCode.D, Enum.KeyCode.Space, Enum.KeyCode.R, Enum.KeyCode.C)
+end, false, Enum.ContextActionPriority.High.Value, Enum.KeyCode.A, Enum.KeyCode.D, Enum.KeyCode.Space, Enum.KeyCode.R, Enum.KeyCode.C, Enum.KeyCode.T)
 
 local function fragmentY(fragment)
 	return fragment.y + math.sin(elapsed * 3 + fragment.x) * 1.5
@@ -537,7 +598,7 @@ end
 
 local function render(dt)
 	local direction = (if right then 1 else 0) - (if left then 1 else 0)
-	if not won and lives > 0 and not shop.Visible then
+	if not won and lives > 0 and not shop.Visible and not leaderboard.Visible then
 		attemptTime += math.min(dt, Fase.timeLimit - runTime)
 		runTime = math.min(Fase.timeLimit, runTime + dt)
 		if direction ~= 0 then
@@ -594,7 +655,7 @@ local function render(dt)
 	for _, fragment in fragments do
 		fragment.art.Position = UDim2.fromOffset(fragment.x - 3, math.round(fragmentY(fragment)) - 3)
 	end
-	renderMist(not won and lives > 0 and not shop.Visible and (direction ~= 0 or not player.grounded))
+	renderMist(not won and lives > 0 and not shop.Visible and not leaderboard.Visible and (direction ~= 0 or not player.grounded))
 	for _, bat in bats do
 		bat.art.Position = UDim2.fromOffset(math.round(bat.x or bat.path.x) - 7, math.round(bat.y or bat.path.y) - 3)
 		local raised = math.floor(elapsed * 9) % 2 == 0
