@@ -71,18 +71,20 @@ return {
 	},
 	bats = {
 		{ x = 285, y = 154, range = 37, speed = 2.3 },
-		{ x = 628, y = 146, range = 25, speed = 2.8 },
 		{ x = 901, y = 151, range = 42, speed = 2.1 },
 		{ x = 1575, y = 145, range = 23, speed = 2.1 },
-		{ x = 2024, y = 144, range = 24, speed = 2.4 },
 		{ x = 2272, y = 144, range = 23, speed = 2.2 },
 	},
 	mummies = {
 		{ left = 61, right = 82, y = 172, speed = 15 },
-		{ left = 824, right = 849, y = 172, speed = 17 },
 		{ left = 1124, right = 1159, y = 172, speed = 16 },
 		{ left = 1329, right = 1354, y = 156, speed = 16 },
-		{ left = 1722, right = 1744, y = 172, speed = 15 },
 		{ left = 2382, right = 2406, y = 172, speed = 17 },
+	},
+	frankensteins = {
+		{ left = 631, right = 648, y = 172, speed = 12 },
+		{ left = 828, right = 847, y = 172, speed = 13 },
+		{ left = 1722, right = 1740, y = 172, speed = 11 },
+		{ left = 2040, right = 2059, y = 156, speed = 13 },
 	},
 }

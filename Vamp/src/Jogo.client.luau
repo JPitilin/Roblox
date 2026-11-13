@@ -100,10 +100,18 @@ for _, path in Fase.bats do
 	table.insert(bats, { path = path, art = art, wings = Arte.bat(art) })
 end
 
-local mummies = {}
-for _, path in Fase.mummies do
-	local art = Arte.layer(world, "Múmia", Arte.mummyWidth, Arte.mummyHeight, 10)
-	table.insert(mummies, { path = path, art = art, poses = Arte.mummy(art), x = path.left, facing = 1 })
+local walkers = {}
+local walkerTypes = {
+	{ paths = Fase.mummies, name = "Múmia", width = Arte.mummyWidth, height = Arte.mummyHeight,
+		hitHeight = 21, cadence = 3, sprite = Arte.mummy, defeat = "Uma múmia acertou Nino." },
+	{ paths = Fase.frankensteins, name = "Frankenstein", width = Arte.frankensteinWidth, height = Arte.frankensteinHeight,
+		hitHeight = 23, cadence = 2.4, sprite = Arte.frankenstein, defeat = "Um Frankenstein acertou Nino." },
+}
+for _, kind in walkerTypes do
+	for _, path in kind.paths do
+		local art = Arte.layer(world, kind.name, kind.width, kind.height, 10)
+		table.insert(walkers, { kind = kind, path = path, art = art, poses = kind.sprite(art), x = path.left, facing = 1 })
+	end
 end
 
 local header = Arte.rect(viewport, 0, 0, VIEW_WIDTH, 33, 10, 11)
@@ -504,21 +512,22 @@ local function simulate(direction)
 	if jumped then
 		jumpSound:Play()
 	end
-	for _, mummy in mummies do
-		local path = mummy.path
+	for _, walker in walkers do
+		local path = walker.path
 		local length = path.right - path.left
 		local distance = (elapsed * path.speed) % (2 * length)
-		mummy.x = path.left + math.min(distance, 2 * length - distance)
-		mummy.facing = if distance < length then 1 else 2
+		walker.x = path.left + math.min(distance, 2 * length - distance)
+		walker.facing = if distance < length then 1 else 2
 	end
 	if player.y > VIEW_HEIGHT + 10 then
 		loseLife("Nino caiu no abismo.")
 		return
 	end
-	for _, mummy in mummies do
-		if Movimento.touches(player, mummy.x - 5, mummy.path.y - 21, 10, 21) then
+	for _, walker in walkers do
+		local height = walker.kind.hitHeight
+		if Movimento.touches(player, walker.x - 5, walker.path.y - height, 10, height) then
 			hitSound:Play()
-			loseLife("Uma múmia acertou Nino.")
+			loseLife(walker.kind.defeat)
 			return
 		end
 	end
@@ -672,19 +681,19 @@ local function render(dt)
 		bat.wings[1].Visible = raised
 		bat.wings[2].Visible = not raised
 	end
-	local step = 1 + math.floor(elapsed * 3) % 2
-	for _, mummy in mummies do
-		mummy.art.Position = UDim2.fromOffset(
-			math.round(mummy.x - Arte.mummyWidth / 2),
-			mummy.path.y - Arte.mummyHeight
+	for _, walker in walkers do
+		local step = 1 + math.floor(elapsed * walker.kind.cadence) % 2
+		walker.art.Position = UDim2.fromOffset(
+			math.round(walker.x - walker.kind.width / 2),
+			walker.path.y - walker.kind.height
 		)
-		local pose = mummy.poses[mummy.facing][step]
-		if mummy.shownPose ~= pose then
-			if mummy.shownPose then
-				mummy.shownPose.Visible = false
+		local pose = walker.poses[walker.facing][step]
+		if walker.shownPose ~= pose then
+			if walker.shownPose then
+				walker.shownPose.Visible = false
 			end
 			pose.Visible = true
-			mummy.shownPose = pose
+			walker.shownPose = pose
 		end
 	end
 end

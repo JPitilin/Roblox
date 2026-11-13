@@ -379,23 +379,80 @@ local mummySteps = {
 	{ "......SDLSLDS.........", "......SLDS.SLS........", "......SLDS..SLDS......", "......SSS....SSS......" },
 }
 
-function Arte.mummy(parent)
+Arte.frankensteinWidth = 22
+Arte.frankensteinHeight = 28
+
+local frankensteinColors = {
+	K = Color3.fromRGB(25, 25, 30),
+	H = Color3.fromRGB(45, 45, 66),
+	G = Color3.fromRGB(156, 190, 64),
+	S = Color3.fromRGB(72, 99, 35),
+	B = Color3.fromRGB(167, 170, 160),
+	E = 232,
+	W = Color3.fromRGB(126, 100, 176),
+	O = Color3.fromRGB(214, 141, 49),
+	P = Color3.fromRGB(99, 56, 128),
+	V = Color3.fromRGB(61, 39, 82),
+	Y = Color3.fromRGB(205, 149, 58),
+	A = Color3.fromRGB(162, 97, 44),
+	N = Color3.fromRGB(115, 82, 56),
+	D = 76,
+}
+local frankenstein = {
+	"......KKKKKKKKKKK.....",
+	".....KKHHHHHHHHKKK....",
+	".....KHHHHHHHHHHKK....",
+	".....KHHKHHHHKHHKK....",
+	".....KHHKHGHHKHHKK....",
+	".....KHKGGGHGGKHKK....",
+	".....KKGGGGGGGGGKK....",
+	".....KGSGSGSGGGGKK....",
+	"....BKGSSSSSGGGGGKB...",
+	"....BKGGEWGGEOGGGKB...",
+	".....KGGEKGGEKGGGK....",
+	".....KGGGGGGGGGGGK....",
+	"......KGGGGKKGGGK.....",
+	"......KGGGGGGGGK......",
+	"..KK...KKGGGGKK..KK...",
+	".KGGK..PKKKKKK..KGGK..",
+	".KGSK.PPPYYYYPP.KSGK..",
+	"..KGKPPPVYYYVPPPKGK...",
+	"...KKPPPVAAAVPPPKK....",
+	".....KPPVYYYYVPPK.....",
+	"......KPVAAAVPK.......",
+	"......KPVYYYYVPK......",
+	"......KNNNNNNNNK......",
+}
+local frankensteinSteps = {
+	{ "......KNNNKNNNNK......", ".....KNNNK.KNNNK......", ".....KDDDK.KDDDK......", "....KKDDDK.KDDDKK.....", "....KKKKKK.KKKKKK....." },
+	{ "......KNNNKNNNNK......", "......KNNK.KNNNNK.....", "......KDDK..KDDDK.....", ".....KDDDK..KDDDKK....", ".....KKKKK..KKKKKK...." },
+}
+
+local function walkingSprite(parent, width, height, body, steps, colors)
 	local poses = {}
 	for _, flipped in { false, true } do
 		local facing = {}
-		for pose, feet in mummySteps do
-			local frame = Arte.layer(parent, "Passo " .. pose, Arte.mummyWidth, Arte.mummyHeight, 10)
-			local rows = table.clone(mummy)
+		for pose, feet in steps do
+			local frame = Arte.layer(parent, "Passo " .. pose, width, height, 10)
+			local rows = table.clone(body)
 			for _, row in feet do
 				table.insert(rows, row)
 			end
-			Arte.sprite(frame, rows, mummyColors, flipped)
+			Arte.sprite(frame, rows, colors, flipped)
 			frame.Visible = false
 			facing[pose] = frame
 		end
 		table.insert(poses, facing)
 	end
 	return poses
+end
+
+function Arte.mummy(parent)
+	return walkingSprite(parent, Arte.mummyWidth, Arte.mummyHeight, mummy, mummySteps, mummyColors)
+end
+
+function Arte.frankenstein(parent)
+	return walkingSprite(parent, Arte.frankensteinWidth, Arte.frankensteinHeight, frankenstein, frankensteinSteps, frankensteinColors)
 end
 
 function Arte.lantern(parent, point)

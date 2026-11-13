@@ -935,10 +935,18 @@ for _, path in Fase.bats do
 	table.insert(bats, { path = path, art = art, wings = Arte.bat(art) })
 end
 
-local mummies = {}
-for _, path in Fase.mummies do
-	local art = Arte.layer(world, "Múmia", Arte.mummyWidth, Arte.mummyHeight, 10)
-	table.insert(mummies, { path = path, art = art, poses = Arte.mummy(art), x = path.left, facing = 1 })
+local walkers = {}
+local walkerTypes = {
+	{ paths = Fase.mummies, name = "Múmia", width = Arte.mummyWidth, height = Arte.mummyHeight,
+		hitHeight = 21, cadence = 3, sprite = Arte.mummy, defeat = "Uma múmia acertou Nino." },
+	{ paths = Fase.frankensteins, name = "Frankenstein", width = Arte.frankensteinWidth, height = Arte.frankensteinHeight,
+		hitHeight = 23, cadence = 2.4, sprite = Arte.frankenstein, defeat = "Um Frankenstein acertou Nino." },
+}
+for _, kind in walkerTypes do
+	for _, path in kind.paths do
+		local art = Arte.layer(world, kind.name, kind.width, kind.height, 10)
+		table.insert(walkers, { kind = kind, path = path, art = art, poses = kind.sprite(art), x = path.left, facing = 1 })
+	end
 end
 
 local header = Arte.rect(viewport, 0, 0, VIEW_WIDTH, 33, 10, 11)
@@ -1339,21 +1347,22 @@ local function simulate(direction)
 	if jumped then
 		jumpSound:Play()
 	end
-	for _, mummy in mummies do
-		local path = mummy.path
+	for _, walker in walkers do
+		local path = walker.path
 		local length = path.right - path.left
 		local distance = (elapsed * path.speed) % (2 * length)
-		mummy.x = path.left + math.min(distance, 2 * length - distance)
-		mummy.facing = if distance &lt; length then 1 else 2
+		walker.x = path.left + math.min(distance, 2 * length - distance)
+		walker.facing = if distance &lt; length then 1 else 2
 	end
 	if player.y &gt; VIEW_HEIGHT + 10 then
 		loseLife("Nino caiu no abismo.")
 		return
 	end
-	for _, mummy in mummies do
-		if Movimento.touches(player, mummy.x - 5, mummy.path.y - 21, 10, 21) then
+	for _, walker in walkers do
+		local height = walker.kind.hitHeight
+		if Movimento.touches(player, walker.x - 5, walker.path.y - height, 10, height) then
 			hitSound:Play()
-			loseLife("Uma múmia acertou Nino.")
+			loseLife(walker.kind.defeat)
 			return
 		end
 	end
@@ -1507,19 +1516,19 @@ local function render(dt)
 		bat.wings[1].Visible = raised
 		bat.wings[2].Visible = not raised
 	end
-	local step = 1 + math.floor(elapsed * 3) % 2
-	for _, mummy in mummies do
-		mummy.art.Position = UDim2.fromOffset(
-			math.round(mummy.x - Arte.mummyWidth / 2),
-			mummy.path.y - Arte.mummyHeight
+	for _, walker in walkers do
+		local step = 1 + math.floor(elapsed * walker.kind.cadence) % 2
+		walker.art.Position = UDim2.fromOffset(
+			math.round(walker.x - walker.kind.width / 2),
+			walker.path.y - walker.kind.height
 		)
-		local pose = mummy.poses[mummy.facing][step]
-		if mummy.shownPose ~= pose then
-			if mummy.shownPose then
-				mummy.shownPose.Visible = false
+		local pose = walker.poses[walker.facing][step]
+		if walker.shownPose ~= pose then
+			if walker.shownPose then
+				walker.shownPose.Visible = false
 			end
 			pose.Visible = true
-			mummy.shownPose = pose
+			walker.shownPose = pose
 		end
 	end
 end
@@ -1929,23 +1938,80 @@ local mummySteps = {
 	{ "......SDLSLDS.........", "......SLDS.SLS........", "......SLDS..SLDS......", "......SSS....SSS......" },
 }
 
-function Arte.mummy(parent)
+Arte.frankensteinWidth = 22
+Arte.frankensteinHeight = 28
+
+local frankensteinColors = {
+	K = Color3.fromRGB(25, 25, 30),
+	H = Color3.fromRGB(45, 45, 66),
+	G = Color3.fromRGB(156, 190, 64),
+	S = Color3.fromRGB(72, 99, 35),
+	B = Color3.fromRGB(167, 170, 160),
+	E = 232,
+	W = Color3.fromRGB(126, 100, 176),
+	O = Color3.fromRGB(214, 141, 49),
+	P = Color3.fromRGB(99, 56, 128),
+	V = Color3.fromRGB(61, 39, 82),
+	Y = Color3.fromRGB(205, 149, 58),
+	A = Color3.fromRGB(162, 97, 44),
+	N = Color3.fromRGB(115, 82, 56),
+	D = 76,
+}
+local frankenstein = {
+	"......KKKKKKKKKKK.....",
+	".....KKHHHHHHHHKKK....",
+	".....KHHHHHHHHHHKK....",
+	".....KHHKHHHHKHHKK....",
+	".....KHHKHGHHKHHKK....",
+	".....KHKGGGHGGKHKK....",
+	".....KKGGGGGGGGGKK....",
+	".....KGSGSGSGGGGKK....",
+	"....BKGSSSSSGGGGGKB...",
+	"....BKGGEWGGEOGGGKB...",
+	".....KGGEKGGEKGGGK....",
+	".....KGGGGGGGGGGGK....",
+	"......KGGGGKKGGGK.....",
+	"......KGGGGGGGGK......",
+	"..KK...KKGGGGKK..KK...",
+	".KGGK..PKKKKKK..KGGK..",
+	".KGSK.PPPYYYYPP.KSGK..",
+	"..KGKPPPVYYYVPPPKGK...",
+	"...KKPPPVAAAVPPPKK....",
+	".....KPPVYYYYVPPK.....",
+	"......KPVAAAVPK.......",
+	"......KPVYYYYVPK......",
+	"......KNNNNNNNNK......",
+}
+local frankensteinSteps = {
+	{ "......KNNNKNNNNK......", ".....KNNNK.KNNNK......", ".....KDDDK.KDDDK......", "....KKDDDK.KDDDKK.....", "....KKKKKK.KKKKKK....." },
+	{ "......KNNNKNNNNK......", "......KNNK.KNNNNK.....", "......KDDK..KDDDK.....", ".....KDDDK..KDDDKK....", ".....KKKKK..KKKKKK...." },
+}
+
+local function walkingSprite(parent, width, height, body, steps, colors)
 	local poses = {}
 	for _, flipped in { false, true } do
 		local facing = {}
-		for pose, feet in mummySteps do
-			local frame = Arte.layer(parent, "Passo " .. pose, Arte.mummyWidth, Arte.mummyHeight, 10)
-			local rows = table.clone(mummy)
+		for pose, feet in steps do
+			local frame = Arte.layer(parent, "Passo " .. pose, width, height, 10)
+			local rows = table.clone(body)
 			for _, row in feet do
 				table.insert(rows, row)
 			end
-			Arte.sprite(frame, rows, mummyColors, flipped)
+			Arte.sprite(frame, rows, colors, flipped)
 			frame.Visible = false
 			facing[pose] = frame
 		end
 		table.insert(poses, facing)
 	end
 	return poses
+end
+
+function Arte.mummy(parent)
+	return walkingSprite(parent, Arte.mummyWidth, Arte.mummyHeight, mummy, mummySteps, mummyColors)
+end
+
+function Arte.frankenstein(parent)
+	return walkingSprite(parent, Arte.frankensteinWidth, Arte.frankensteinHeight, frankenstein, frankensteinSteps, frankensteinColors)
 end
 
 function Arte.lantern(parent, point)
@@ -2071,19 +2137,21 @@ return Arte
 	},
 	bats = {
 		{ x = 285, y = 154, range = 37, speed = 2.3 },
-		{ x = 628, y = 146, range = 25, speed = 2.8 },
 		{ x = 901, y = 151, range = 42, speed = 2.1 },
 		{ x = 1575, y = 145, range = 23, speed = 2.1 },
-		{ x = 2024, y = 144, range = 24, speed = 2.4 },
 		{ x = 2272, y = 144, range = 23, speed = 2.2 },
 	},
 	mummies = {
 		{ left = 61, right = 82, y = 172, speed = 15 },
-		{ left = 824, right = 849, y = 172, speed = 17 },
 		{ left = 1124, right = 1159, y = 172, speed = 16 },
 		{ left = 1329, right = 1354, y = 156, speed = 16 },
-		{ left = 1722, right = 1744, y = 172, speed = 15 },
 		{ left = 2382, right = 2406, y = 172, speed = 17 },
+	},
+	frankensteins = {
+		{ left = 631, right = 648, y = 172, speed = 12 },
+		{ left = 828, right = 847, y = 172, speed = 13 },
+		{ left = 1722, right = 1740, y = 172, speed = 11 },
+		{ left = 2040, right = 2059, y = 156, speed = 13 },
 	},
 }
 </ProtectedString>
