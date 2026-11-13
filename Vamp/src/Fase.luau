@@ -1,6 +1,8 @@
 return {
 	width = 1248,
 	height = 216,
+	timeLimit = 120,
+	startingLives = 3,
 	start = { x = 34, y = 172 },
 	checkpoint = { x = 576, y = 172 },
 	exit = { x = 1190, y = 172 },

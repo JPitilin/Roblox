@@ -941,13 +941,14 @@ header.BackgroundTransparency = 0.12
 Arte.rect(viewport, 0, 33, VIEW_WIDTH, 1, 66, 11)
 Arte.text(header, "LUAR DE CINZAS", 12, 3, 190, 14, 12, 240)
 Arte.text(header, "Nino  /  Cemitério", 12, 17, 175, 12, 9, 170)
-local timer = Arte.text(header, "TEMPO  00:00", 144, 3, 96, 14, 10, 231)
+local timer = Arte.text(header, "", 140, 3, 86, 14, 10, 231)
 timer.TextXAlignment = Enum.TextXAlignment.Center
-local counter = Arte.text(header, "", 200, 3, 172, 14, 11, 231)
+local lifeCounter = Arte.text(header, "", 227, 3, 62, 14, 10, 231)
+local counter = Arte.text(header, "", 288, 3, 84, 14, 10, 231)
 counter.TextXAlignment = Enum.TextXAlignment.Right
-local hint = Arte.text(header, "A/D  mover   ESPAÇO  saltar", 185, 17, 187, 12, 9, 183)
+local hint = Arte.text(header, "A/D  mover   ESPAÇO  saltar", 227, 17, 145, 12, 9, 183)
 hint.TextXAlignment = Enum.TextXAlignment.Right
-local shopToggle = Arte.text(header, "C  CAPAS  |  LUA  0", 117, 17, 122, 12, 9, Color3.fromRGB(194, 222, 245), true)
+local shopToggle = Arte.text(header, "", 117, 17, 110, 12, 9, Color3.fromRGB(194, 222, 245), true)
 shopToggle.TextXAlignment = Enum.TextXAlignment.Center
 
 local panel = Arte.rect(viewport, 64, 65, 256, 90, 15, 11)
@@ -983,10 +984,11 @@ local player = Movimento.new(Fase.start)
 local cameraX = 0
 local elapsed = 0
 local runTime = 0
-local shownSeconds = 0
+local shownSeconds
+local lives = Fase.startingLives
 local accumulator = 0
 local collected = 0
-local balance = 0
+local foundFragments = 0
 local owned = { original = true }
 local equipped = "original"
 local mistSlot = 1
@@ -999,16 +1001,33 @@ local jumpQueued = false
 local facing = 1
 local shownPose
 
+local function capeProgress()
+	local balance = foundFragments
+	local unlocked = 0
+	for _, outfit in outfits do
+		if owned[outfit.id] then
+			balance -= outfit.cost
+			if outfit.cost &gt; 0 then
+				unlocked += 1
+			end
+		end
+	end
+	return balance, unlocked
+end
+
 local function updateShop()
-	shopToggle.Text = string.format("C  CAPAS  |  LUA  %d", balance)
-	shopBalance.Text = string.format("Fragmentos de Lua  %d", balance)
+	local balance, unlocked = capeProgress()
+	shopToggle.Text = string.format("C CAPAS  |  LUA %d/%d", foundFragments, #fragments)
+	shopBalance.Text = string.format("Saldo: %d fragmentos  |  Capas extras: %d/%d", balance, unlocked, #outfits - 1)
 	for _, outfit in outfits do
 		local available = equipped ~= outfit.id and (owned[outfit.id] or balance &gt;= outfit.cost)
 		local button = outfit.button
 		button.Interactable = available
 		button.BackgroundTransparency = if available then 0 else 0.55
 		button.Text = if equipped == outfit.id then "EM USO"
-			elseif owned[outfit.id] then "EQUIPAR" else string.format("TROCAR  %d", outfit.cost)
+			elseif owned[outfit.id] then "EQUIPAR"
+			elseif available then string.format("TROCAR %d", outfit.cost)
+			else string.format("FALTAM %d", outfit.cost - balance)
 	end
 end
 
@@ -1018,10 +1037,9 @@ for _, outfit in outfits do
 			return
 		end
 		if not owned[outfit.id] then
-			if balance &lt; outfit.cost then
+			if capeProgress() &lt; outfit.cost then
 				return
 			end
-			balance -= outfit.cost
 			owned[outfit.id] = true
 		end
 		equipped = outfit.id
@@ -1031,7 +1049,7 @@ end
 
 local function toggleShop()
 	shop.Visible = not shop.Visible
-	panel.Visible = won and not shop.Visible
+	panel.Visible = (won or lives == 0) and not shop.Visible
 	left, right, jumpQueued = false, false, false
 	accumulator = 0
 end
@@ -1040,6 +1058,7 @@ closeShop.Activated:Connect(toggleShop)
 
 local function updateCounter()
 	counter.Text = string.format("RELÍQUIAS  %d/%d", collected, #relics)
+	lifeCounter.Text = string.format("VIDAS  %d/%d", lives, Fase.startingLives)
 end
 
 local function formatTime(seconds)
@@ -1049,7 +1068,9 @@ end
 local function respawn()
 	player = Movimento.new(if checkpoint then Fase.checkpoint else Fase.start)
 	cameraX = math.clamp(player.x - VIEW_WIDTH * 0.38, 0, Fase.width - VIEW_WIDTH)
-	jumpQueued = false
+	left, right, jumpQueued = false, false, false
+	runTime = 0
+	accumulator = 0
 	nextMist = elapsed
 	for _, puff in mist do
 		puff.art.Visible = false
@@ -1058,6 +1079,7 @@ end
 
 local function restart()
 	won = false
+	lives = Fase.startingLives
 	checkpoint = false
 	elapsed = 0
 	runTime = 0
@@ -1074,9 +1096,18 @@ local function restart()
 	updateCounter()
 end
 
-local function takeHit()
-	hitSound:Play()
-	respawn()
+local function loseLife(reason)
+	lives -= 1
+	updateCounter()
+	if lives &gt; 0 then
+		respawn()
+		return
+	end
+	left, right, jumpQueued = false, false, false
+	accumulator = 0
+	title.Text = "Fim de jogo"
+	result.Text = reason
+	panel.Visible = true
 end
 
 local function clearInput()
@@ -1103,14 +1134,18 @@ ContextActionService:BindActionAtPriority("LuarControls", function(_, state, inp
 	if shop.Visible then
 		return Enum.ContextActionResult.Sink
 	end
+	if won or lives == 0 then
+		if input.KeyCode == Enum.KeyCode.R and down then
+			restart()
+		end
+		return Enum.ContextActionResult.Sink
+	end
 	if input.KeyCode == Enum.KeyCode.A then
 		left = down
 	elseif input.KeyCode == Enum.KeyCode.D then
 		right = down
-	elseif input.KeyCode == Enum.KeyCode.Space and down and not won then
+	elseif input.KeyCode == Enum.KeyCode.Space and down then
 		jumpQueued = true
-	elseif input.KeyCode == Enum.KeyCode.R and down and won then
-		restart()
 	end
 	return Enum.ContextActionResult.Sink
 end, false, Enum.ContextActionPriority.High.Value, Enum.KeyCode.A, Enum.KeyCode.D, Enum.KeyCode.Space, Enum.KeyCode.R, Enum.KeyCode.C)
@@ -1134,12 +1169,13 @@ local function simulate(direction)
 		mummy.facing = if distance &lt; length then 1 else 2
 	end
 	if player.y &gt; VIEW_HEIGHT + 10 then
-		respawn()
+		loseLife("Nino caiu no abismo.")
 		return
 	end
 	for _, mummy in mummies do
 		if Movimento.touches(player, mummy.x - 5, mummy.path.y - 21, 10, 21) then
-			takeHit()
+			hitSound:Play()
+			loseLife("Uma múmia acertou Nino.")
 			return
 		end
 	end
@@ -1148,7 +1184,8 @@ local function simulate(direction)
 		bat.x = bat.path.x + math.sin(phase) * bat.path.range
 		bat.y = bat.path.y + math.sin(phase * 1.65) * 4
 		if Movimento.touches(player, bat.x - 5, bat.y - 2, 10, 5) then
-			takeHit()
+			hitSound:Play()
+			loseLife("Um morcego acertou Nino.")
 			return
 		end
 	end
@@ -1163,7 +1200,7 @@ local function simulate(direction)
 	for _, fragment in fragments do
 		if fragment.art.Visible and Movimento.touches(player, fragment.x - 4, fragmentY(fragment) - 4, 8, 8) then
 			fragment.art.Visible = false
-			balance += 1
+			foundFragments += 1
 			updateShop()
 		end
 	end
@@ -1176,6 +1213,7 @@ local function simulate(direction)
 	local door = Fase.exit
 	if Movimento.touches(player, door.x - 6, door.y - 25, 12, 25) then
 		won = true
+		title.Text = "Cripta alcançada"
 		result.Text = string.format("Tempo %s  |  Relíquias %d/%d", formatTime(math.floor(runTime)), collected, #relics)
 		panel.Visible = true
 	end
@@ -1204,20 +1242,25 @@ end
 
 local function render(dt)
 	local direction = (if right then 1 else 0) - (if left then 1 else 0)
-	if not won and not shop.Visible then
-		runTime += dt
+	if not won and lives &gt; 0 and not shop.Visible then
+		runTime = math.min(Fase.timeLimit, runTime + dt)
 		if direction ~= 0 then
 			facing = if direction &gt; 0 then 1 else 2
 		end
-		accumulator = math.min(accumulator + dt, 0.1)
-		while accumulator &gt;= Movimento.step and not won do
-			simulate(direction)
-			accumulator -= Movimento.step
+		if runTime &gt;= Fase.timeLimit then
+			loseLife("O tempo acabou.")
+		else
+			accumulator = math.min(accumulator + dt, 0.1)
+			while accumulator &gt;= Movimento.step and not won do
+				accumulator -= Movimento.step
+				simulate(direction)
+			end
 		end
 	end
-	local seconds = math.floor(runTime)
+	local seconds = math.ceil(Fase.timeLimit - runTime)
 	if shownSeconds ~= seconds then
 		timer.Text = "TEMPO  " .. formatTime(seconds)
+		timer.TextColor3 = if seconds &lt;= 15 then Color3.fromRGB(245, 150, 150) else Color3.fromRGB(231, 231, 231)
 		shownSeconds = seconds
 	end
 
@@ -1234,7 +1277,7 @@ local function render(dt)
 	local pose = 1
 	if not player.grounded then
 		pose = 4
-	elseif direction ~= 0 and not won then
+	elseif direction ~= 0 and not won and lives &gt; 0 then
 		pose = 2 + math.floor(elapsed * 10) % 2
 	end
 	local sprite = poses[equipped][facing][pose]
@@ -1251,7 +1294,7 @@ local function render(dt)
 	for _, fragment in fragments do
 		fragment.art.Position = UDim2.fromOffset(fragment.x - 3, math.round(fragmentY(fragment)) - 3)
 	end
-	renderMist(not won and not shop.Visible and (direction ~= 0 or not player.grounded))
+	renderMist(not won and lives &gt; 0 and not shop.Visible and (direction ~= 0 or not player.grounded))
 	for _, bat in bats do
 		bat.art.Position = UDim2.fromOffset(math.round(bat.x or bat.path.x) - 7, math.round(bat.y or bat.path.y) - 3)
 		local raised = math.floor(elapsed * 9) % 2 == 0
@@ -1718,6 +1761,8 @@ return Arte
 						<ProtectedString name="Source">return {
 	width = 1248,
 	height = 216,
+	timeLimit = 120,
+	startingLives = 3,
 	start = { x = 34, y = 172 },
 	checkpoint = { x = 576, y = 172 },
 	exit = { x = 1190, y = 172 },
