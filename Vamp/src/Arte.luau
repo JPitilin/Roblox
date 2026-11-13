@@ -25,8 +25,9 @@ function Arte.layer(parent, name, w, h, z)
 	return frame
 end
 
-function Arte.text(parent, text, x, y, w, h, size, value)
-	local label = Instance.new("TextLabel")
+function Arte.text(parent, text, x, y, w, h, size, value, button)
+	local label = Instance.new(if button then "TextButton" else "TextLabel")
+	label.BorderSizePixel = 0
 	label.BackgroundTransparency = 1
 	label.Position = UDim2.fromOffset(x, y)
 	label.Size = UDim2.fromOffset(w, h)
@@ -180,7 +181,7 @@ local nino = {
 	"..RKKKKKKKKKKKRRRK....",
 }
 
-function Arte.sprite(parent, rows, colors, flipped)
+function Arte.sprite(parent, rows, colors, flipped, z)
 	for y, row in rows do
 		local x = 1
 		while x <= #row do
@@ -190,14 +191,40 @@ function Arte.sprite(parent, rows, colors, flipped)
 				nextX += 1
 			end
 			if colors[symbol] then
-				Arte.rect(parent, if flipped then #row - nextX + 1 else x - 1, y - 1, nextX - x, 1, colors[symbol], 10)
+				Arte.rect(parent, if flipped then #row - nextX + 1 else x - 1, y - 1, nextX - x, 1, colors[symbol], z or 10)
 			end
 			x = nextX
 		end
 	end
 end
 
-function Arte.nino(parent)
+local capes = {
+	curta = {
+		"......EEEEE...........",
+		"....ECCCCCCEE.........",
+		"...ECCCCCCCCCEE.......",
+		"..ECCCCCCCCCCCCEE.....",
+		".ECCCCCCCCCCCCCEEE....",
+		"EEECCCCCCEEEEEEE......",
+		"...EEEEEEE............",
+	},
+	nevoa = {
+		"......EEEEE...........",
+		"....EECCCCCEE.........",
+		"...ECCCCCCCCCEE.......",
+		"..ECCCCCCCCCCCCE......",
+		"..ECCCCCCCCCCCCCE.....",
+		".ECCCCCCCCCCCCCCCE....",
+		".ECCCCCCCCCCCCCCCCE...",
+		"ECCCCCCCCCCCCCCCCCCE..",
+		"ECCCCCCCCCCCCCCCCCCCE.",
+		"ECCECCCCCCCECCCECCEE..",
+		"EEE.ECCCEEE.ECE.EE....",
+		"E....EEE.....E........",
+	},
+}
+
+function Arte.nino(parent, cape)
 	local poses = {}
 	for _, flipped in { false, true } do
 		local facing = {}
@@ -212,6 +239,15 @@ function Arte.nino(parent)
 			for _, row in feet do
 				table.insert(rows, row)
 			end
+			local silhouette = capes[cape]
+			if silhouette then
+				local fabric = Arte.layer(sprite, "Capa", Arte.ninoWidth, #silhouette, 9)
+				fabric.Position = UDim2.fromOffset(0, 13)
+				Arte.sprite(fabric, silhouette, { C = if cape == "nevoa" then 85 else 49, E = if cape == "nevoa" then 155 else 117 }, flipped, 9)
+				for index, row in rows do
+					rows[index] = string.gsub(row, "R", ".")
+				end
+			end
 			Arte.sprite(sprite, rows, ninoColors, flipped)
 			sprite.Visible = false
 			facing[pose] = sprite
@@ -219,6 +255,18 @@ function Arte.nino(parent)
 		table.insert(poses, facing)
 	end
 	return poses
+end
+
+function Arte.fragment(parent)
+	Arte.sprite(parent, {
+		"...LL..",
+		"..LV...",
+		".LV....",
+		".LV....",
+		".LVH...",
+		"..LVVL.",
+		"...LL..",
+	}, { L = Color3.fromRGB(215, 236, 252), V = Color3.fromRGB(157, 194, 226), H = Color3.fromRGB(87, 132, 179) }, false)
 end
 
 function Arte.bat(parent)

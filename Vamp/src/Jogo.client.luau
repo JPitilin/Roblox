@@ -43,13 +43,35 @@ local setCheckpointLight = Arte.lantern(world, Fase.checkpoint)
 setCheckpointLight(false)
 Arte.door(world, Fase.exit)
 local nino = Arte.layer(world, "Nino", Arte.ninoWidth, Arte.ninoHeight, 10)
-local poses = Arte.nino(nino)
+local outfits = {
+	{ id = "original", name = "Capa original", detail = "Gola alta vermelha", cost = 0 },
+	{ id = "curta", name = "Capa curta", detail = "Ombros largos, corte curto", cost = 3 },
+	{ id = "nevoa", name = "Capa de névoa", detail = "Barra recortada e rastro cinza", cost = 6 },
+}
+local poses = {}
+for _, outfit in outfits do
+	poses[outfit.id] = Arte.nino(nino, outfit.id)
+end
+
+local mist = {}
+for i = 1, 8 do
+	local puff = Arte.rect(world, 0, 0, 4, 2, 153, 8)
+	puff.Visible = false
+	mist[i] = { art = puff, age = 0 }
+end
 
 local relics = {}
 for _, point in Fase.relics do
 	local art = Arte.layer(world, "Relíquia", 9, 9, 10)
 	Arte.relic(art)
 	table.insert(relics, { x = point.x, y = point.y, art = art })
+end
+
+local fragments = {}
+for _, point in Fase.fragments do
+	local art = Arte.layer(world, "Fragmento de Lua", 7, 7, 10)
+	Arte.fragment(art)
+	table.insert(fragments, { x = point.x, y = point.y, art = art })
 end
 
 local bats = {}
@@ -75,6 +97,8 @@ local counter = Arte.text(header, "", 200, 3, 172, 14, 11, 231)
 counter.TextXAlignment = Enum.TextXAlignment.Right
 local hint = Arte.text(header, "A/D  mover   ESPAÇO  saltar", 185, 17, 187, 12, 9, 183)
 hint.TextXAlignment = Enum.TextXAlignment.Right
+local shopToggle = Arte.text(header, "C  CAPAS  |  LUA  0", 117, 17, 122, 12, 9, Color3.fromRGB(194, 222, 245), true)
+shopToggle.TextXAlignment = Enum.TextXAlignment.Center
 
 local panel = Arte.rect(viewport, 64, 65, 256, 90, 15, 11)
 Arte.rect(panel, 0, 0, 256, 1, 153, 11)
@@ -87,6 +111,24 @@ local replay = Arte.text(panel, "R  jogar novamente", 12, 63, 232, 13, 10, 177)
 replay.TextXAlignment = Enum.TextXAlignment.Center
 panel.Visible = false
 
+local shop = Arte.rect(viewport, 58, 45, 268, 151, 19, 11)
+Arte.rect(shop, 0, 0, 268, 1, 134, 11)
+Arte.rect(shop, 0, 150, 268, 1, 134, 11)
+Arte.text(shop, "CAPAS", 12, 7, 105, 16, 14, 240)
+local closeShop = Arte.text(shop, "C  FECHAR", 190, 7, 66, 16, 10, 212, true)
+closeShop.TextXAlignment = Enum.TextXAlignment.Right
+local shopBalance = Arte.text(shop, "", 12, 25, 244, 14, 10, Color3.fromRGB(194, 222, 245))
+for i, outfit in outfits do
+	local y = 46 + (i - 1) * 32
+	Arte.text(shop, outfit.name, 12, y, 160, 13, 11, 239)
+	Arte.text(shop, outfit.detail, 12, y + 13, 178, 11, 9, 173)
+	local button = Arte.text(shop, "", 188, y + 2, 68, 20, 9, 230, true)
+	button.TextXAlignment = Enum.TextXAlignment.Center
+	button.BackgroundColor3 = Color3.fromRGB(53, 55, 58)
+	outfit.button = button
+end
+shop.Visible = false
+
 local player = Movimento.new(Fase.start)
 local cameraX = 0
 local elapsed = 0
@@ -94,6 +136,11 @@ local runTime = 0
 local shownSeconds = 0
 local accumulator = 0
 local collected = 0
+local balance = 0
+local owned = { original = true }
+local equipped = "original"
+local mistSlot = 1
+local nextMist = 0
 local checkpoint = false
 local won = false
 local left = false
@@ -101,6 +148,45 @@ local right = false
 local jumpQueued = false
 local facing = 1
 local shownPose
+
+local function updateShop()
+	shopToggle.Text = string.format("C  CAPAS  |  LUA  %d", balance)
+	shopBalance.Text = string.format("Fragmentos de Lua  %d", balance)
+	for _, outfit in outfits do
+		local available = equipped ~= outfit.id and (owned[outfit.id] or balance >= outfit.cost)
+		local button = outfit.button
+		button.Interactable = available
+		button.BackgroundTransparency = if available then 0 else 0.55
+		button.Text = if equipped == outfit.id then "EM USO"
+			elseif owned[outfit.id] then "EQUIPAR" else string.format("TROCAR  %d", outfit.cost)
+	end
+end
+
+for _, outfit in outfits do
+	outfit.button.Activated:Connect(function()
+		if not shop.Visible or equipped == outfit.id then
+			return
+		end
+		if not owned[outfit.id] then
+			if balance < outfit.cost then
+				return
+			end
+			balance -= outfit.cost
+			owned[outfit.id] = true
+		end
+		equipped = outfit.id
+		updateShop()
+	end)
+end
+
+local function toggleShop()
+	shop.Visible = not shop.Visible
+	panel.Visible = won and not shop.Visible
+	left, right, jumpQueued = false, false, false
+	accumulator = 0
+end
+shopToggle.Activated:Connect(toggleShop)
+closeShop.Activated:Connect(toggleShop)
 
 local function updateCounter()
 	counter.Text = string.format("RELÍQUIAS  %d/%d", collected, #relics)
@@ -114,6 +200,10 @@ local function respawn()
 	player = Movimento.new(if checkpoint then Fase.checkpoint else Fase.start)
 	cameraX = math.clamp(player.x - VIEW_WIDTH * 0.38, 0, Fase.width - VIEW_WIDTH)
 	jumpQueued = false
+	nextMist = elapsed
+	for _, puff in mist do
+		puff.art.Visible = false
+	end
 end
 
 local function restart()
@@ -149,6 +239,15 @@ ContextActionService:BindActionAtPriority("LuarControls", function(_, state, inp
 		return Enum.ContextActionResult.Pass
 	end
 	local down = state == Enum.UserInputState.Begin
+	if input.KeyCode == Enum.KeyCode.C then
+		if down then
+			toggleShop()
+		end
+		return Enum.ContextActionResult.Sink
+	end
+	if shop.Visible then
+		return Enum.ContextActionResult.Sink
+	end
 	if input.KeyCode == Enum.KeyCode.A then
 		left = down
 	elseif input.KeyCode == Enum.KeyCode.D then
@@ -159,7 +258,11 @@ ContextActionService:BindActionAtPriority("LuarControls", function(_, state, inp
 		restart()
 	end
 	return Enum.ContextActionResult.Sink
-end, false, Enum.ContextActionPriority.High.Value, Enum.KeyCode.A, Enum.KeyCode.D, Enum.KeyCode.Space, Enum.KeyCode.R)
+end, false, Enum.ContextActionPriority.High.Value, Enum.KeyCode.A, Enum.KeyCode.D, Enum.KeyCode.Space, Enum.KeyCode.R, Enum.KeyCode.C)
+
+local function fragmentY(fragment)
+	return fragment.y + math.sin(elapsed * 3 + fragment.x) * 1.5
+end
 
 local function simulate(direction)
 	elapsed += Movimento.step
@@ -199,6 +302,13 @@ local function simulate(direction)
 			updateCounter()
 		end
 	end
+	for _, fragment in fragments do
+		if fragment.art.Visible and Movimento.touches(player, fragment.x - 4, fragmentY(fragment) - 4, 8, 8) then
+			fragment.art.Visible = false
+			balance += 1
+			updateShop()
+		end
+	end
 	local mark = Fase.checkpoint
 	if not checkpoint and Movimento.touches(player, mark.x - 8, mark.y - 27, 16, 27) then
 		checkpoint = true
@@ -213,9 +323,30 @@ local function simulate(direction)
 	end
 end
 
+local function renderMist(moving)
+	if equipped == "nevoa" and moving and elapsed >= nextMist then
+		local puff = mist[mistSlot]
+		puff.x = player.x + (if facing == 1 then 0 else Movimento.width)
+		puff.y = player.y + 13
+		puff.drift = if facing == 1 then -14 else 14
+		puff.age = elapsed
+		puff.art.Visible = true
+		mistSlot = mistSlot % #mist + 1
+		nextMist = elapsed + 0.065
+	end
+	for _, puff in mist do
+		if puff.art.Visible then
+			local age = elapsed - puff.age
+			puff.art.Visible = age < 0.42 and equipped == "nevoa"
+			puff.art.Position = UDim2.fromOffset(math.round(puff.x + puff.drift * age), math.round(puff.y - 12 * age))
+			puff.art.BackgroundTransparency = math.min(1, 0.38 + age * 1.5)
+		end
+	end
+end
+
 local function render(dt)
 	local direction = (if right then 1 else 0) - (if left then 1 else 0)
-	if not won then
+	if not won and not shop.Visible then
 		runTime += dt
 		if direction ~= 0 then
 			facing = if direction > 0 then 1 else 2
@@ -248,7 +379,7 @@ local function render(dt)
 	elseif direction ~= 0 and not won then
 		pose = 2 + math.floor(elapsed * 10) % 2
 	end
-	local sprite = poses[facing][pose]
+	local sprite = poses[equipped][facing][pose]
 	if shownPose ~= sprite then
 		if shownPose then
 			shownPose.Visible = false
@@ -259,6 +390,10 @@ local function render(dt)
 	for _, relic in relics do
 		relic.art.Position = UDim2.fromOffset(relic.x - 4, math.round(relic.y - 4 + math.sin(elapsed * 3 + relic.x) * 2))
 	end
+	for _, fragment in fragments do
+		fragment.art.Position = UDim2.fromOffset(fragment.x - 3, math.round(fragmentY(fragment)) - 3)
+	end
+	renderMist(not won and not shop.Visible and (direction ~= 0 or not player.grounded))
 	for _, bat in bats do
 		bat.art.Position = UDim2.fromOffset(math.round(bat.x or bat.path.x) - 7, math.round(bat.y or bat.path.y) - 3)
 		local raised = math.floor(elapsed * 9) % 2 == 0
@@ -284,5 +419,6 @@ end
 
 StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.All, false)
 updateCounter()
+updateShop()
 render(0)
 RunService.PreRender:Connect(render)
