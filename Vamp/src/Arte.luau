@@ -198,6 +198,38 @@ function Arte.sprite(parent, rows, colors, flipped, z)
 	end
 end
 
+function Arte.lifeIcon(parent, x)
+	local icon = Arte.layer(parent, "Vida do Nino", 22, 16, 12)
+	icon.Position = UDim2.fromOffset(x, 0)
+	local full = Arte.layer(icon, "Preenchido", 22, 16, 12)
+	local empty = Arte.layer(icon, "Vazado", 22, 16, 12)
+	local face, outline = {}, {}
+	for y = 1, 16 do
+		face[y] = nino[y]
+	end
+	local function filled(x, y)
+		local row = face[y]
+		return row ~= nil and x >= 1 and x <= 22 and string.sub(row, x, x) ~= "."
+	end
+	for y, row in face do
+		local pixels = {}
+		for column = 1, #row do
+			local edge = filled(column, y) and not (
+				filled(column - 1, y) and filled(column + 1, y)
+				and filled(column, y - 1) and filled(column, y + 1)
+			)
+			pixels[column] = if edge then "E" else "."
+		end
+		outline[y] = table.concat(pixels)
+	end
+	Arte.sprite(full, face, ninoColors, false, 12)
+	Arte.sprite(empty, outline, { E = 148 }, false, 12)
+	return function(active)
+		full.Visible = active
+		empty.Visible = not active
+	end
+end
+
 local capes = {
 	curta = {
 		"......EEEEE...........",

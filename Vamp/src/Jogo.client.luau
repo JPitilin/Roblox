@@ -1,5 +1,6 @@
 local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
 local StarterGui = game:GetService("StarterGui")
@@ -108,7 +109,10 @@ Arte.text(header, "LUAR DE CINZAS", 12, 3, 190, 14, 12, 240)
 Arte.text(header, "Nino  /  Cemitério", 12, 17, 175, 12, 9, 170)
 local timer = Arte.text(header, "", 140, 3, 86, 14, 10, 231)
 timer.TextXAlignment = Enum.TextXAlignment.Center
-local lifeCounter = Arte.text(header, "", 227, 3, 62, 14, 10, 231)
+local lifeIcons = {}
+for i = 1, Fase.startingLives do
+	lifeIcons[i] = Arte.lifeIcon(header, 224 + (i - 1) * 21)
+end
 local counter = Arte.text(header, "", 288, 3, 84, 14, 10, 231)
 counter.TextXAlignment = Enum.TextXAlignment.Right
 local hint = Arte.text(header, "A/D  mover   ESPAÇO  saltar", 227, 17, 145, 12, 9, 183)
@@ -116,14 +120,38 @@ hint.TextXAlignment = Enum.TextXAlignment.Right
 local shopToggle = Arte.text(header, "", 117, 17, 110, 12, 9, Color3.fromRGB(194, 222, 245), true)
 shopToggle.TextXAlignment = Enum.TextXAlignment.Center
 
-local panel = Arte.rect(viewport, 64, 65, 256, 90, 15, 11)
-Arte.rect(panel, 0, 0, 256, 1, 153, 11)
-Arte.rect(panel, 0, 89, 256, 1, 153, 11)
-local title = Arte.text(panel, "", 12, 10, 232, 24, 18, 244)
+local panel = Arte.rect(viewport, 52, 54, 280, 130, 15, 11)
+Arte.rect(panel, 0, 0, 280, 1, 153, 11)
+local panelBorder = Arte.rect(panel, 0, 129, 280, 1, 153, 11)
+local title = Arte.text(panel, "", 12, 8, 256, 24, 18, 244)
 title.TextXAlignment = Enum.TextXAlignment.Center
-local result = Arte.text(panel, "", 12, 39, 232, 16, 11, 209)
+local result = Arte.text(panel, "", 12, 32, 256, 15, 11, 209)
 result.TextXAlignment = Enum.TextXAlignment.Center
-local replay = Arte.text(panel, "Recomeçar  [R]", 65, 62, 126, 19, 11, 245, true)
+local recordForm = Arte.layer(panel, "Recorde pessoal", 280, 130, 11)
+local bestLabel = Arte.text(recordForm, "", 10, 49, 260, 14, 10, 220)
+bestLabel.TextXAlignment = Enum.TextXAlignment.Center
+bestLabel.TextTruncate = Enum.TextTruncate.AtEnd
+local nameInput = Instance.new("TextBox")
+nameInput.Name = "Nome do jogador"
+nameInput.Position = UDim2.fromOffset(14, 66)
+nameInput.Size = UDim2.fromOffset(149, 20)
+nameInput.BorderSizePixel = 0
+nameInput.BackgroundColor3 = Color3.fromRGB(40, 42, 46)
+nameInput.TextColor3 = Color3.fromRGB(245, 245, 245)
+nameInput.Font = Enum.Font.Code
+nameInput.TextSize = 11
+nameInput.PlaceholderText = "Seu nome (até 24)"
+nameInput.ClearTextOnFocus = false
+nameInput.Text = ""
+nameInput.ZIndex = 12
+nameInput.Parent = recordForm
+local saveRecord = Arte.text(recordForm, "Salvar recorde", 171, 66, 95, 20, 10, 245, true)
+saveRecord.TextXAlignment = Enum.TextXAlignment.Center
+saveRecord.BackgroundColor3 = Color3.fromRGB(50, 68, 85)
+saveRecord.BackgroundTransparency = 0
+local recordStatus = Arte.text(recordForm, "", 12, 86, 256, 14, 9, 185)
+recordStatus.TextXAlignment = Enum.TextXAlignment.Center
+local replay = Arte.text(panel, "Recomeçar  [R]", 77, 104, 126, 19, 11, 245, true)
 replay.TextXAlignment = Enum.TextXAlignment.Center
 replay.BackgroundColor3 = Color3.fromRGB(56, 58, 64)
 replay.BackgroundTransparency = 0
@@ -151,6 +179,10 @@ local player = Movimento.new(Fase.start)
 local cameraX = 0
 local elapsed = 0
 local runTime = 0
+local attemptTime = 0
+local completedTime
+local recordRevision = 0
+local savingRecord = false
 local shownSeconds
 local lives = Fase.startingLives
 local accumulator = 0
@@ -226,12 +258,70 @@ closeShop.Activated:Connect(toggleShop)
 
 local function updateCounter()
 	counter.Text = string.format("RELÍQUIAS  %d/%d", collected, #relics)
-	lifeCounter.Text = string.format("VIDAS  %d/%d", lives, Fase.startingLives)
+	for i, showLife in lifeIcons do
+		showLife(i <= lives)
+	end
 end
 
 local function formatTime(seconds)
 	return string.format("%02d:%02d", math.floor(seconds / 60), seconds % 60)
 end
+
+local function formatRecord(milliseconds)
+	return string.format("%s.%03d", formatTime(math.floor(milliseconds / 1000)), milliseconds % 1000)
+end
+
+local function showBest(record)
+	bestLabel.Text = if record then string.format("Recorde: %s  %s", formatRecord(record.milliseconds), record.name)
+		else "Nenhum recorde salvo"
+end
+
+local function requestRecord(action, milliseconds, name)
+	local remote = ReplicatedStorage:FindFirstChild("RecordeDaFase")
+	if not remote then
+		return false
+	end
+	local called, ok, record = pcall(function()
+		return remote:InvokeServer(action, milliseconds, name)
+	end)
+	return called and ok, record
+end
+
+local function saveBest()
+	if not won or not panel.Visible or savingRecord then
+		return
+	end
+	local name = string.match(nameInput.Text, "^%s*(.-)%s*$")
+	local length = utf8.len(name)
+	if not length or length == 0 or length > 24 or string.find(name, "%c") then
+		recordStatus.Text = "Digite um nome de 1 a 24 caracteres."
+		return
+	end
+	recordRevision += 1
+	local revision = recordRevision
+	savingRecord = true
+	saveRecord.Interactable = false
+	recordStatus.Text = "Salvando..."
+	local ok, record = requestRecord("salvar", completedTime, name)
+	if revision ~= recordRevision then
+		return
+	end
+	savingRecord = false
+	saveRecord.Interactable = true
+	if not ok or not record then
+		recordStatus.Text = "Falha ao salvar. Tente de novo."
+		return
+	end
+	showBest(record)
+	recordStatus.Text = if record.milliseconds < completedTime then "Seu melhor tempo foi mantido."
+		elseif RunService:IsStudio() then "Recorde salvo neste teste." else "Recorde salvo."
+end
+saveRecord.Activated:Connect(saveBest)
+nameInput.FocusLost:Connect(function(enterPressed)
+	if enterPressed then
+		saveBest()
+	end
+end)
 
 local function respawn()
 	player = Movimento.new(if checkpoint then Fase.checkpoint else Fase.start)
@@ -253,6 +343,11 @@ local function restart()
 	checkpoint = false
 	elapsed = 0
 	runTime = 0
+	attemptTime = 0
+	completedTime = nil
+	recordRevision += 1
+	savingRecord = false
+	saveRecord.Interactable = true
 	collected = 0
 	facing = 1
 	left, right = false, false
@@ -284,6 +379,10 @@ local function loseLife(reason)
 	title.Text = "GAME OVER"
 	title.TextTransparency = 0
 	result.Text = reason
+	recordForm.Visible = false
+	panel.Size = UDim2.fromOffset(280, 90)
+	panelBorder.Position = UDim2.fromOffset(0, 89)
+	replay.Position = UDim2.fromOffset(77, 61)
 	panel.Visible = true
 end
 
@@ -390,10 +489,28 @@ local function simulate(direction)
 	local door = Fase.exit
 	if Movimento.touches(player, door.x - 6, door.y - 25, 12, 25) then
 		won = true
+		completedTime = math.max(1, math.round(attemptTime * 1000))
 		title.Text = "CONGRATULATION"
 		title.TextTransparency = 0
-		result.Text = string.format("Tempo %s  |  Relíquias %d/%d", formatTime(math.floor(runTime)), collected, #relics)
+		result.Text = string.format("Tempo %s  |  Relíquias %d/%d", formatRecord(completedTime), collected, #relics)
+		recordForm.Visible = true
+		panel.Size = UDim2.fromOffset(280, 130)
+		panelBorder.Position = UDim2.fromOffset(0, 129)
+		replay.Position = UDim2.fromOffset(77, 104)
+		bestLabel.Text = "Carregando recorde..."
+		recordStatus.Text = ""
 		panel.Visible = true
+		local revision = recordRevision
+		task.spawn(function()
+			local ok, record = requestRecord("consultar")
+			if revision == recordRevision then
+				if ok then
+					showBest(record)
+				else
+					bestLabel.Text = "Recorde indisponível"
+				end
+			end
+		end)
 	end
 end
 
@@ -421,6 +538,7 @@ end
 local function render(dt)
 	local direction = (if right then 1 else 0) - (if left then 1 else 0)
 	if not won and lives > 0 and not shop.Visible then
+		attemptTime += math.min(dt, Fase.timeLimit - runTime)
 		runTime = math.min(Fase.timeLimit, runTime + dt)
 		if direction ~= 0 then
 			facing = if direction > 0 then 1 else 2
