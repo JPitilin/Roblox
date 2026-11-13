@@ -30,10 +30,14 @@ local jumpSound = createSound("Pulo do Nino", "rbxasset://sounds/action_jump.mp3
 local hitSound = createSound("Nino atingido", "rbxasset://sounds/ouch.ogg", 0.5, false)
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
+local touchEnabled = UserInputService.TouchEnabled
+if touchEnabled then
+	playerGui.ScreenOrientation = Enum.ScreenOrientation.LandscapeSensor
+end
 local screen = Instance.new("ScreenGui")
 screen.Name = "Luar de Cinzas"
 screen.ResetOnSpawn = false
-screen.ScreenInsets = Enum.ScreenInsets.None
+screen.ScreenInsets = Enum.ScreenInsets.CoreUISafeInsets
 screen.ZIndexBehavior = Enum.ZIndexBehavior.Global
 screen.Parent = playerGui
 
@@ -45,11 +49,34 @@ viewport.Position = UDim2.fromScale(0.5, 0.5)
 viewport.ClipsDescendants = true
 local zoom = Instance.new("UIScale")
 zoom.Parent = viewport
+local touchBarHeight = if touchEnabled then 60 else 0
+local touchBar = Arte.layer(backdrop, "Controles de toque", 0, touchBarHeight, 13)
+touchBar.AnchorPoint = Vector2.new(0, 1)
+touchBar.Position = UDim2.fromScale(0, 1)
+touchBar.Size = UDim2.new(1, 0, 0, touchBarHeight)
+touchBar.Visible = false
+
+local function touchButton(text, x, width, rightAligned)
+	local button = Arte.text(touchBar, text, x, 4, width, 48, 17, 245, true)
+	if rightAligned then
+		button.AnchorPoint = Vector2.new(1, 0)
+		button.Position = UDim2.new(1, x, 0, 4)
+	end
+	button.TextXAlignment = Enum.TextXAlignment.Center
+	button.BackgroundColor3 = Color3.fromRGB(53, 55, 62)
+	button.BackgroundTransparency = 0.15
+	button.ZIndex = 13
+	return button
+end
+local moveLeftButton = touchButton("◀", 8, 54)
+local moveRightButton = touchButton("▶", 70, 54)
+local jumpButton = touchButton("PULAR", -8, 84, true)
 
 local function resize()
 	local size = backdrop.AbsoluteSize
 	if size.X > 0 and size.Y > 0 then
-		zoom.Scale = math.min(size.X / VIEW_WIDTH, size.Y / VIEW_HEIGHT)
+		zoom.Scale = math.min(size.X / VIEW_WIDTH, math.max(1, size.Y - touchBarHeight) / VIEW_HEIGHT)
+		viewport.Position = UDim2.new(0.5, 0, 0.5, -touchBarHeight / 2)
 	end
 end
 backdrop:GetPropertyChangedSignal("AbsoluteSize"):Connect(resize)
@@ -129,11 +156,14 @@ for i = 1, Fase.startingLives do
 end
 local counter = Arte.text(header, "", 288, 3, 84, 14, 10, 231)
 counter.TextXAlignment = Enum.TextXAlignment.Right
-local hint = Arte.text(header, "A/D mover  ESPAÇO pular", 251, 17, 121, 12, 9, 183)
+local controlsHint = if touchEnabled then "" else "A/D   ESPAÇO"
+local hint = Arte.text(header, controlsHint, 246, 17, 72, 12, 9, 183)
 hint.TextXAlignment = Enum.TextXAlignment.Right
 local shopToggle = Arte.text(header, "", 12, 17, 91, 12, 9, Color3.fromRGB(194, 222, 245), true)
 local fragmentCounter = Arte.text(header, "", 106, 17, 63, 12, 9, 183)
-local rankingToggle = Arte.text(header, "T RECORDES", 180, 17, 68, 12, 9, Color3.fromRGB(194, 222, 245), true)
+local rankingToggle = Arte.text(header, if touchEnabled then "RECORDES" else "T RECORDES", 171, 17, 68, 12, 9, Color3.fromRGB(194, 222, 245), true)
+local helpToggle = Arte.text(header, if touchEnabled then "AJUDA" else "H AJUDA", 327, 17, 45, 12, 9, Color3.fromRGB(194, 222, 245), true)
+helpToggle.TextXAlignment = Enum.TextXAlignment.Right
 
 local panel = Arte.rect(viewport, 52, 54, 280, 130, 15, 11)
 Arte.rect(panel, 0, 0, 280, 1, 153, 11)
@@ -166,7 +196,7 @@ saveRecord.BackgroundColor3 = Color3.fromRGB(50, 68, 85)
 saveRecord.BackgroundTransparency = 0
 local recordStatus = Arte.text(recordForm, "", 12, 86, 256, 14, 9, 185)
 recordStatus.TextXAlignment = Enum.TextXAlignment.Center
-local replay = Arte.text(panel, "Recomeçar  [R]", 77, 104, 126, 19, 11, 245, true)
+local replay = Arte.text(panel, if touchEnabled then "Recomeçar" else "Recomeçar  [R]", 77, 104, 126, 19, 11, 245, true)
 replay.TextXAlignment = Enum.TextXAlignment.Center
 replay.BackgroundColor3 = Color3.fromRGB(56, 58, 64)
 replay.BackgroundTransparency = 0
@@ -230,6 +260,28 @@ for i = 1, 10 do
 end
 leaderboard.Visible = false
 
+local helpMenu = Arte.rect(viewport, 35, 42, 314, 164, 19, 11)
+Arte.rect(helpMenu, 0, 0, 314, 1, 134, 11)
+Arte.rect(helpMenu, 0, 163, 314, 1, 134, 11)
+Arte.text(helpMenu, "COMO JOGAR", 12, 6, 160, 18, 14, 244)
+local closeHelp = Arte.text(helpMenu, if touchEnabled then "FECHAR" else "H FECHAR", 229, 6, 73, 18, 10, 212, true)
+closeHelp.TextXAlignment = Enum.TextXAlignment.Right
+local helpText = {
+	"Chegue à cripta, desviando dos monstros e abismos.",
+	string.format("Você tem %d vidas e %d minutos por vida.", Fase.startingLives, Fase.timeLimit / 60),
+	"Sem tempo, ao cair ou ao ser atingido, perde uma vida.",
+	"As lanternas azuis são pontos de retorno.",
+	"Relíquias douradas são opcionais. Lua troca por capas.",
+	"Na vitória, salve seu tempo com um nome em Recordes.",
+	"Teclado: A/D anda, Espaço pula, R recomeça.",
+	"Atalhos: C capas, T recordes, H ajuda.",
+	"Toque: segure ◀ ou ▶ e toque em PULAR.",
+}
+for i, line in helpText do
+	Arte.text(helpMenu, line, 12, 27 + (i - 1) * 14, 290, 14, 9, if i >= 7 then 233 else 200)
+end
+helpMenu.Visible = false
+
 local player = Movimento.new(Fase.start)
 local cameraX = 0
 local elapsed = 0
@@ -255,6 +307,7 @@ local victoryBlink = 0
 local left = false
 local right = false
 local jumpQueued = false
+local leftTouches, rightTouches = {}, {}
 local facing = 1
 local shownPose
 
@@ -274,7 +327,7 @@ end
 
 local function updateShop()
 	local balance, unlocked = capeProgress()
-	shopToggle.Text = string.format("C CAPAS %d/%d", unlocked + 1, #outfits)
+	shopToggle.Text = string.format("%sCAPAS %d/%d", if touchEnabled then "" else "C ", unlocked + 1, #outfits)
 	fragmentCounter.Text = string.format("LUA %d/%d", foundFragments, #fragments)
 	shopBalance.Text = string.format("Mapa: %d   Comprados: %d   Capas: %d/%d", balance, purchasedWallet.balance, unlocked + 1, #outfits)
 	walletLabel.Text = string.format("Saldo comprado: %d", purchasedWallet.balance)
@@ -338,15 +391,36 @@ for _, outfit in outfits do
 	end)
 end
 
+local function clearInput()
+	left, right, jumpQueued = false, false, false
+	table.clear(leftTouches)
+	table.clear(rightTouches)
+end
+UserInputService.WindowFocusReleased:Connect(clearInput)
+
+local function menuOpen()
+	return shop.Visible or packageMenu.Visible or leaderboard.Visible or helpMenu.Visible
+end
+
+local function canPlay()
+	return not won and lives > 0 and not menuOpen()
+end
+
 local function toggleMenu(menu)
 	local open = not menu.Visible
 	shop.Visible = open and menu == shop
 	packageMenu.Visible = open and menu == packageMenu
 	leaderboard.Visible = open and menu == leaderboard
+	helpMenu.Visible = open and menu == helpMenu
 	panel.Visible = (won or lives == 0) and not open
-	left, right, jumpQueued = false, false, false
+	clearInput()
 	accumulator = 0
 end
+local function toggleHelp()
+	toggleMenu(helpMenu)
+end
+helpToggle.Activated:Connect(toggleHelp)
+closeHelp.Activated:Connect(toggleHelp)
 local function toggleShop()
 	toggleMenu(shop)
 end
@@ -503,7 +577,7 @@ end)
 local function respawn()
 	player = Movimento.new(if checkpoint > 0 then checkpoints[checkpoint].point else Fase.start)
 	cameraX = math.clamp(player.x - VIEW_WIDTH * 0.38, 0, Fase.width - VIEW_WIDTH)
-	left, right, jumpQueued = false, false, false
+	clearInput()
 	runTime = 0
 	accumulator = 0
 	nextMist = elapsed
@@ -532,7 +606,7 @@ local function restart()
 	for _, marker in checkpoints do
 		marker.setLight(false)
 	end
-	hint.Text = "A/D mover  ESPAÇO pular"
+	hint.Text = controlsHint
 	for _, relic in relics do
 		relic.art.Visible = true
 	end
@@ -553,7 +627,7 @@ local function loseLife(reason)
 		respawn()
 		return
 	end
-	left, right, jumpQueued = false, false, false
+	clearInput()
 	accumulator = 0
 	title.Text = "GAME OVER"
 	title.TextTransparency = 0
@@ -565,10 +639,29 @@ local function loseLife(reason)
 	panel.Visible = true
 end
 
-local function clearInput()
-	left, right, jumpQueued = false, false, false
+local function acceptTouch(input)
+	return input.UserInputType == Enum.UserInputType.Touch and canPlay() and not UserInputService:GetFocusedTextBox()
 end
-UserInputService.WindowFocusReleased:Connect(clearInput)
+moveLeftButton.InputBegan:Connect(function(input)
+	if acceptTouch(input) then
+		leftTouches[input] = true
+	end
+end)
+moveRightButton.InputBegan:Connect(function(input)
+	if acceptTouch(input) then
+		rightTouches[input] = true
+	end
+end)
+jumpButton.InputBegan:Connect(function(input)
+	if acceptTouch(input) then
+		jumpQueued = true
+	end
+end)
+UserInputService.TouchEnded:Connect(function(input)
+	leftTouches[input] = nil
+	rightTouches[input] = nil
+end)
+UserInputService.TextBoxFocused:Connect(clearInput)
 
 ContextActionService:BindActionAtPriority("LuarControls", function(_, state, input)
 	if state == Enum.UserInputState.Cancel then
@@ -592,7 +685,13 @@ ContextActionService:BindActionAtPriority("LuarControls", function(_, state, inp
 		end
 		return Enum.ContextActionResult.Sink
 	end
-	if shop.Visible or packageMenu.Visible or leaderboard.Visible then
+	if input.KeyCode == Enum.KeyCode.H then
+		if down then
+			toggleHelp()
+		end
+		return Enum.ContextActionResult.Sink
+	end
+	if menuOpen() then
 		return Enum.ContextActionResult.Sink
 	end
 	if won or lives == 0 then
@@ -609,7 +708,7 @@ ContextActionService:BindActionAtPriority("LuarControls", function(_, state, inp
 		jumpQueued = true
 	end
 	return Enum.ContextActionResult.Sink
-end, false, Enum.ContextActionPriority.High.Value, Enum.KeyCode.A, Enum.KeyCode.D, Enum.KeyCode.Space, Enum.KeyCode.R, Enum.KeyCode.C, Enum.KeyCode.T)
+end, false, Enum.ContextActionPriority.High.Value, Enum.KeyCode.A, Enum.KeyCode.D, Enum.KeyCode.Space, Enum.KeyCode.R, Enum.KeyCode.C, Enum.KeyCode.T, Enum.KeyCode.H)
 
 local function fragmentY(fragment)
 	return fragment.y + math.sin(elapsed * 3 + fragment.x) * 1.5
@@ -726,8 +825,8 @@ local function renderMist(moving)
 end
 
 local function render(dt)
-	local direction = (if right then 1 else 0) - (if left then 1 else 0)
-	local playing = not won and lives > 0 and not shop.Visible and not packageMenu.Visible and not leaderboard.Visible
+	local direction = (if right or next(rightTouches) then 1 else 0) - (if left or next(leftTouches) then 1 else 0)
+	local playing = canPlay()
 	if playing then
 		attemptTime += math.min(dt, Fase.timeLimit - runTime)
 		runTime = math.min(Fase.timeLimit, runTime + dt)
@@ -744,6 +843,7 @@ local function render(dt)
 			end
 		end
 	end
+	touchBar.Visible = touchEnabled and canPlay()
 	if won and panel.Visible then
 		victoryBlink = (victoryBlink + dt) % 1.2
 		title.TextTransparency = if victoryBlink < 0.8 then 0 else 1
