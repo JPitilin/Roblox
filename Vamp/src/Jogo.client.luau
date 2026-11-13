@@ -200,8 +200,6 @@ local replay = Arte.text(panel, if touchEnabled then "Recomeçar" else "Recomeç
 replay.TextXAlignment = Enum.TextXAlignment.Center
 replay.BackgroundColor3 = Color3.fromRGB(56, 58, 64)
 replay.BackgroundTransparency = 0
-local returnToMenu = Arte.text(panel, "Menu inicial", 207, 104, 66, 19, 9, 208, true)
-returnToMenu.TextXAlignment = Enum.TextXAlignment.Center
 panel.Visible = false
 
 local shop = Arte.rect(viewport, 58, 45, 268, 151, 19, 11)
@@ -244,19 +242,19 @@ for i, amount in { 10, 25, 50 } do
 end
 packageMenu.Visible = false
 
-local leaderboard = Arte.rect(viewport, 48, 42, 288, 161, 19, 11)
-Arte.rect(leaderboard, 0, 0, 288, 1, 134, 11)
-Arte.rect(leaderboard, 0, 160, 288, 1, 134, 11)
-Arte.text(leaderboard, "MELHORES TEMPOS", 12, 5, 170, 18, 13, 240)
-local closeRanking = Arte.text(leaderboard, "T FECHAR", 209, 5, 67, 18, 10, 210, true)
+local leaderboard = Arte.rect(viewport, 165, 34, 196, 90, 19, 11)
+Arte.rect(leaderboard, 0, 0, 196, 1, 134, 11)
+Arte.rect(leaderboard, 0, 89, 196, 1, 134, 11)
+Arte.text(leaderboard, "TOP 3 DA FASE", 9, 5, 123, 15, 11, 240)
+local closeRanking = Arte.text(leaderboard, "FECHAR", 135, 4, 52, 18, 9, 210, true)
 closeRanking.TextXAlignment = Enum.TextXAlignment.Right
-local rankingStatus = Arte.text(leaderboard, "", 12, 25, 264, 12, 9, 193)
+local rankingStatus = Arte.text(leaderboard, "", 9, 71, 178, 13, 9, 193)
 local rankingRows = {}
-for i = 1, 10 do
-	local y = 39 + (i - 1) * 11
-	local name = Arte.text(leaderboard, "", 12, y, 184, 11, 9, 229)
+for i = 1, 3 do
+	local y = 23 + (i - 1) * 15
+	local name = Arte.text(leaderboard, "", 9, y, 116, 14, 9, 229)
 	name.TextTruncate = Enum.TextTruncate.AtEnd
-	local time = Arte.text(leaderboard, "", 205, y, 71, 11, 9, 229)
+	local time = Arte.text(leaderboard, "", 130, y, 57, 14, 9, 229)
 	time.TextXAlignment = Enum.TextXAlignment.Right
 	rankingRows[i] = { name = name, time = time }
 end
@@ -284,30 +282,6 @@ for i, line in helpText do
 end
 helpMenu.Visible = false
 
-local mainMenu = Arte.rect(viewport, 0, 34, VIEW_WIDTH, VIEW_HEIGHT - 34, 10, 10)
-mainMenu.Name = "Menu inicial"
-mainMenu.BackgroundTransparency = 0.22
-local mainCard = Arte.rect(mainMenu, 66, 10, 252, 157, 19, 11)
-Arte.rect(mainCard, 0, 0, 252, 1, 134, 11)
-Arte.rect(mainCard, 0, 156, 252, 1, 134, 11)
-local mainTitle = Arte.text(mainCard, "LUAR DE CINZAS", 12, 8, 228, 22, 17, 244)
-mainTitle.TextXAlignment = Enum.TextXAlignment.Center
-Arte.text(mainCard, "TOP 3 DA FASE", 16, 36, 220, 15, 11, Color3.fromRGB(194, 222, 245))
-local topRows = {}
-for i = 1, 3 do
-	local y = 55 + (i - 1) * 16
-	local name = Arte.text(mainCard, "", 16, y, 151, 14, 10, 230)
-	name.TextTruncate = Enum.TextTruncate.AtEnd
-	local time = Arte.text(mainCard, "", 172, y, 64, 14, 10, 230)
-	time.TextXAlignment = Enum.TextXAlignment.Right
-	topRows[i] = { name = name, time = time }
-end
-local topStatus = Arte.text(mainCard, "Carregando recordes...", 16, 104, 220, 13, 9, 190)
-local playButton = Arte.text(mainCard, if touchEnabled then "Jogar" else "Jogar  [Enter]", 61, 123, 130, 24, 12, 245, true)
-playButton.TextXAlignment = Enum.TextXAlignment.Center
-playButton.BackgroundColor3 = Color3.fromRGB(50, 68, 85)
-playButton.BackgroundTransparency = 0
-
 local player = Movimento.new(Fase.start)
 local cameraX = 0
 local elapsed = 0
@@ -329,7 +303,6 @@ local mistSlot = 1
 local nextMist = 0
 local checkpoint = 0
 local won = false
-local atMainMenu = true
 local victoryBlink = 0
 local left = false
 local right = false
@@ -430,7 +403,7 @@ local function menuOpen()
 end
 
 local function canPlay()
-	return not atMainMenu and not won and lives > 0 and not menuOpen()
+	return not won and lives > 0 and not menuOpen()
 end
 
 local function toggleMenu(menu)
@@ -439,7 +412,6 @@ local function toggleMenu(menu)
 	packageMenu.Visible = open and menu == packageMenu
 	leaderboard.Visible = open and menu == leaderboard
 	helpMenu.Visible = open and menu == helpMenu
-	mainMenu.Visible = atMainMenu and not open
 	panel.Visible = (won or lives == 0) and not open
 	clearInput()
 	accumulator = 0
@@ -543,28 +515,6 @@ local function showRankingRows(rows, records)
 	end
 end
 
-local topRevision = 0
-local function refreshTopThree()
-	topRevision += 1
-	local revision = topRevision
-	topStatus.Text = "Carregando recordes..."
-	showRankingRows(topRows)
-	task.spawn(function()
-		local remote = ReplicatedStorage:WaitForChild("RecordeDaFase", 10)
-		local ok, records
-		if remote then
-			ok, records = requestRecord("listar")
-		end
-		if revision ~= topRevision then
-			return
-		end
-		showRankingRows(topRows, if ok then records else nil)
-		topStatus.Text = if not ok then "Recordes indisponíveis."
-			elseif #records == 0 then "Nenhum tempo registrado."
-			elseif RunService:IsStudio() then "Recordes desta sessão" else ""
-	end)
-end
-
 local rankingRevision = 0
 local function toggleRanking()
 	toggleMenu(leaderboard)
@@ -580,9 +530,9 @@ local function toggleRanking()
 		if revision ~= rankingRevision or not leaderboard.Visible then
 			return
 		end
-		rankingStatus.Text = if not ok then "Recordes indisponíveis. Reabra para tentar."
+		rankingStatus.Text = if not ok then "Recordes indisponíveis."
 			elseif #records == 0 then "Nenhum recorde salvo."
-			elseif RunService:IsStudio() then "Recordes desta sessão" else "10 melhores da fase"
+			elseif RunService:IsStudio() then "Recordes desta sessão" else ""
 		showRankingRows(rankingRows, if ok then records else nil)
 	end)
 end
@@ -666,22 +616,6 @@ local function restart()
 	updateCounter()
 end
 
-local function startGame()
-	if mainMenu.Visible then
-		atMainMenu = false
-		mainMenu.Visible = false
-	end
-end
-playButton.Activated:Connect(startGame)
-returnToMenu.Activated:Connect(function()
-	if panel.Visible and (won or lives == 0) then
-		restart()
-		atMainMenu = true
-		mainMenu.Visible = true
-		refreshTopThree()
-	end
-end)
-
 replay.Activated:Connect(function()
 	if panel.Visible and (won or lives == 0) then
 		restart()
@@ -704,7 +638,6 @@ local function loseLife(reason)
 	panel.Size = UDim2.fromOffset(280, 90)
 	panelBorder.Position = UDim2.fromOffset(0, 89)
 	replay.Position = UDim2.fromOffset(77, 61)
-	returnToMenu.Position = UDim2.fromOffset(207, 61)
 	panel.Visible = true
 end
 
@@ -763,12 +696,6 @@ ContextActionService:BindActionAtPriority("LuarControls", function(_, state, inp
 	if menuOpen() then
 		return Enum.ContextActionResult.Sink
 	end
-	if atMainMenu then
-		if input.KeyCode == Enum.KeyCode.Return and down then
-			startGame()
-		end
-		return Enum.ContextActionResult.Sink
-	end
 	if won or lives == 0 then
 		if input.KeyCode == Enum.KeyCode.R and down then
 			restart()
@@ -783,7 +710,7 @@ ContextActionService:BindActionAtPriority("LuarControls", function(_, state, inp
 		jumpQueued = true
 	end
 	return Enum.ContextActionResult.Sink
-end, false, Enum.ContextActionPriority.High.Value, Enum.KeyCode.A, Enum.KeyCode.D, Enum.KeyCode.Space, Enum.KeyCode.R, Enum.KeyCode.C, Enum.KeyCode.T, Enum.KeyCode.H, Enum.KeyCode.Return)
+end, false, Enum.ContextActionPriority.High.Value, Enum.KeyCode.A, Enum.KeyCode.D, Enum.KeyCode.Space, Enum.KeyCode.R, Enum.KeyCode.C, Enum.KeyCode.T, Enum.KeyCode.H)
 
 local function fragmentY(fragment)
 	return fragment.y + math.sin(elapsed * 3 + fragment.x) * 1.5
@@ -861,7 +788,6 @@ local function simulate(direction)
 		panel.Size = UDim2.fromOffset(280, 130)
 		panelBorder.Position = UDim2.fromOffset(0, 129)
 		replay.Position = UDim2.fromOffset(77, 104)
-		returnToMenu.Position = UDim2.fromOffset(207, 104)
 		bestLabel.Text = "Carregando recorde..."
 		recordStatus.Text = ""
 		panel.Visible = true
@@ -988,7 +914,6 @@ end
 StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.All, false)
 updateCounter()
 updateShop()
-refreshTopThree()
 render(0)
 RunService.PreRender:Connect(render)
 music:Play()
