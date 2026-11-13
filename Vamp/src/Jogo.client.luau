@@ -55,8 +55,12 @@ resize()
 local sky, hills = Arte.background(viewport, Fase, VIEW_WIDTH)
 local world = Arte.layer(viewport, "Cemitério", Fase.width, VIEW_HEIGHT, 5)
 Arte.terrain(world, Fase)
-local setCheckpointLight = Arte.lantern(world, Fase.checkpoint)
-setCheckpointLight(false)
+local checkpoints = {}
+for _, point in Fase.checkpoints do
+	local setLight = Arte.lantern(world, point)
+	setLight(false)
+	table.insert(checkpoints, { point = point, setLight = setLight })
+end
 Arte.door(world, Fase.exit)
 local nino = Arte.layer(world, "Nino", Arte.ninoWidth, Arte.ninoHeight, 10)
 local outfits = {
@@ -210,7 +214,7 @@ local owned = { original = true }
 local equipped = "original"
 local mistSlot = 1
 local nextMist = 0
-local checkpoint = false
+local checkpoint = 0
 local won = false
 local victoryBlink = 0
 local left = false
@@ -379,7 +383,7 @@ nameInput.FocusLost:Connect(function(enterPressed)
 end)
 
 local function respawn()
-	player = Movimento.new(if checkpoint then Fase.checkpoint else Fase.start)
+	player = Movimento.new(if checkpoint > 0 then checkpoints[checkpoint].point else Fase.start)
 	cameraX = math.clamp(player.x - VIEW_WIDTH * 0.38, 0, Fase.width - VIEW_WIDTH)
 	left, right, jumpQueued = false, false, false
 	runTime = 0
@@ -395,7 +399,7 @@ local function restart()
 	victoryBlink = 0
 	title.TextTransparency = 0
 	lives = Fase.startingLives
-	checkpoint = false
+	checkpoint = 0
 	elapsed = 0
 	runTime = 0
 	attemptTime = 0
@@ -407,7 +411,9 @@ local function restart()
 	facing = 1
 	left, right = false, false
 	panel.Visible = false
-	setCheckpointLight(false)
+	for _, marker in checkpoints do
+		marker.setLight(false)
+	end
 	hint.Text = "A/D mover  ESPAÇO pular"
 	for _, relic in relics do
 		relic.art.Visible = true
@@ -541,11 +547,15 @@ local function simulate(direction)
 			updateShop()
 		end
 	end
-	local mark = Fase.checkpoint
-	if not checkpoint and Movimento.touches(player, mark.x - 8, mark.y - 27, 16, 27) then
-		checkpoint = true
-		setCheckpointLight(true)
-		hint.Text = "MARCO ATIVO"
+	for i = checkpoint + 1, #checkpoints do
+		local marker = checkpoints[i]
+		local point = marker.point
+		if Movimento.touches(player, point.x - 8, point.y - 27, 16, 27) then
+			checkpoint = i
+			marker.setLight(true)
+			hint.Text = "MARCO ATIVO"
+			break
+		end
 	end
 	local door = Fase.exit
 	if Movimento.touches(player, door.x - 6, door.y - 25, 12, 25) then

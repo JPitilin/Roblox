@@ -890,8 +890,12 @@ resize()
 local sky, hills = Arte.background(viewport, Fase, VIEW_WIDTH)
 local world = Arte.layer(viewport, "Cemitério", Fase.width, VIEW_HEIGHT, 5)
 Arte.terrain(world, Fase)
-local setCheckpointLight = Arte.lantern(world, Fase.checkpoint)
-setCheckpointLight(false)
+local checkpoints = {}
+for _, point in Fase.checkpoints do
+	local setLight = Arte.lantern(world, point)
+	setLight(false)
+	table.insert(checkpoints, { point = point, setLight = setLight })
+end
 Arte.door(world, Fase.exit)
 local nino = Arte.layer(world, "Nino", Arte.ninoWidth, Arte.ninoHeight, 10)
 local outfits = {
@@ -1045,7 +1049,7 @@ local owned = { original = true }
 local equipped = "original"
 local mistSlot = 1
 local nextMist = 0
-local checkpoint = false
+local checkpoint = 0
 local won = false
 local victoryBlink = 0
 local left = false
@@ -1214,7 +1218,7 @@ nameInput.FocusLost:Connect(function(enterPressed)
 end)
 
 local function respawn()
-	player = Movimento.new(if checkpoint then Fase.checkpoint else Fase.start)
+	player = Movimento.new(if checkpoint &gt; 0 then checkpoints[checkpoint].point else Fase.start)
 	cameraX = math.clamp(player.x - VIEW_WIDTH * 0.38, 0, Fase.width - VIEW_WIDTH)
 	left, right, jumpQueued = false, false, false
 	runTime = 0
@@ -1230,7 +1234,7 @@ local function restart()
 	victoryBlink = 0
 	title.TextTransparency = 0
 	lives = Fase.startingLives
-	checkpoint = false
+	checkpoint = 0
 	elapsed = 0
 	runTime = 0
 	attemptTime = 0
@@ -1242,7 +1246,9 @@ local function restart()
 	facing = 1
 	left, right = false, false
 	panel.Visible = false
-	setCheckpointLight(false)
+	for _, marker in checkpoints do
+		marker.setLight(false)
+	end
 	hint.Text = "A/D mover  ESPAÇO pular"
 	for _, relic in relics do
 		relic.art.Visible = true
@@ -1376,11 +1382,15 @@ local function simulate(direction)
 			updateShop()
 		end
 	end
-	local mark = Fase.checkpoint
-	if not checkpoint and Movimento.touches(player, mark.x - 8, mark.y - 27, 16, 27) then
-		checkpoint = true
-		setCheckpointLight(true)
-		hint.Text = "MARCO ATIVO"
+	for i = checkpoint + 1, #checkpoints do
+		local marker = checkpoints[i]
+		local point = marker.point
+		if Movimento.touches(player, point.x - 8, point.y - 27, 16, 27) then
+			checkpoint = i
+			marker.setLight(true)
+			hint.Text = "MARCO ATIVO"
+			break
+		end
 	end
 	local door = Fase.exit
 	if Movimento.touches(player, door.x - 6, door.y - 25, 12, 25) then
@@ -1589,14 +1599,16 @@ local function disk(parent, cx, cy, radius, step, value, z)
 end
 
 function Arte.background(root, level, viewWidth)
-	local sky = Arte.layer(root, "Céu", viewWidth + 330, level.height, 1)
-	local hills = Arte.layer(root, "Colinas", viewWidth + 570, level.height, 3)
+	local skyWidth = viewWidth + math.ceil((level.width - viewWidth) * 0.31)
+	local hillsWidth = viewWidth + math.ceil((level.width - viewWidth) * 0.57)
+	local sky = Arte.layer(root, "Céu", skyWidth, level.height, 1)
+	local hills = Arte.layer(root, "Colinas", hillsWidth, level.height, 3)
 	local random = Random.new(32)
 	for y = 0, 210, 6 do
-		Arte.rect(sky, 0, y, viewWidth + 330, 6, 15 + math.floor(y / 7), 1)
+		Arte.rect(sky, 0, y, skyWidth, 6, 15 + math.floor(y / 7), 1)
 	end
-	for _ = 1, 145 do
-		local x, y = random:NextInteger(1, viewWidth + 310), random:NextInteger(9, 135)
+	for _ = 1, math.floor(skyWidth / 5) do
+		local x, y = random:NextInteger(1, skyWidth - 1), random:NextInteger(9, 135)
 		Arte.rect(sky, x, y, 1, 1, random:NextInteger(48, 121), 2)
 	end
 	disk(sky, 261, 68, 41, 2, 38, 2)
@@ -1604,19 +1616,19 @@ function Arte.background(root, level, viewWidth)
 	disk(sky, 261, 68, 27, 2, 179, 2)
 	disk(sky, 253, 64, 6, 2, 160, 2)
 	disk(sky, 272, 77, 4, 2, 155, 2)
-	for i = 0, 16 do
+	for i = 0, math.ceil(skyWidth / 42) do
 		local x = i * 42 - 20
 		local y = random:NextInteger(88, 136)
 		Arte.rect(sky, x, y, random:NextInteger(22, 54), 2, 70, 2)
 		Arte.rect(sky, x + 12, y + 2, random:NextInteger(28, 53), 3, 59, 2)
 	end
-	for x = 0, viewWidth + 566, 5 do
+	for x = 0, hillsWidth - 1, 5 do
 		local top = 142 + math.floor(11 * math.sin(x / 58) + 8 * math.cos(x / 21))
 		Arte.rect(hills, x, top, 5, level.height - top, 35, 3)
 		local near = 161 + math.floor(8 * math.sin(x / 33) + 5 * math.sin(x / 14))
 		Arte.rect(hills, x, near, 5, level.height - near, 26, 4)
 	end
-	for _, x in { 190, 455, 686, 840 } do
+	for _, x in { 190, 455, 686, 840, 1090, 1390 } do
 		for i = 0, 3 do
 			local tower = x + 13 * i
 			local top = 125 - (i % 2) * 16
@@ -1987,13 +1999,16 @@ return Arte
 					<Properties>
 						<Content name="LinkedSource"><null></null></Content>
 						<ProtectedString name="Source">return {
-	width = 1248,
+	width = 2496,
 	height = 216,
-	timeLimit = 120,
+	timeLimit = 240,
 	startingLives = 3,
 	start = { x = 34, y = 172 },
-	checkpoint = { x = 576, y = 172 },
-	exit = { x = 1190, y = 172 },
+	checkpoints = {
+		{ x = 576, y = 172 },
+		{ x = 1760, y = 172 },
+	},
+	exit = { x = 2438, y = 172 },
 	platforms = {
 		{ x = 0, y = 172, w = 182, h = 62 },
 		{ x = 222, y = 172, w = 162, h = 62 },
@@ -2008,6 +2023,19 @@ return Arte
 		{ x = 319, y = 112, w = 43, h = 10 },
 		{ x = 852, y = 136, w = 46, h = 10 },
 		{ x = 910, y = 111, w = 39, h = 10 },
+		{ x = 1290, y = 156, w = 90, h = 78 },
+		{ x = 1426, y = 136, w = 58, h = 98 },
+		{ x = 1529, y = 156, w = 95, h = 78 },
+		{ x = 1667, y = 172, w = 142, h = 62 },
+		{ x = 1853, y = 148, w = 62, h = 86 },
+		{ x = 1959, y = 156, w = 112, h = 78 },
+		{ x = 2116, y = 136, w = 56, h = 98 },
+		{ x = 2216, y = 156, w = 101, h = 78 },
+		{ x = 2361, y = 172, w = 135, h = 62 },
+		{ x = 1551, y = 126, w = 43, h = 10 },
+		{ x = 1688, y = 140, w = 35, h = 10 },
+		{ x = 1982, y = 125, w = 51, h = 10 },
+		{ x = 2245, y = 124, w = 42, h = 10 },
 	},
 	relics = {
 		{ x = 117, y = 130 },
@@ -2016,6 +2044,12 @@ return Arte
 		{ x = 736, y = 144 },
 		{ x = 929, y = 100 },
 		{ x = 1030, y = 135 },
+		{ x = 1452, y = 124 },
+		{ x = 1571, y = 114 },
+		{ x = 1883, y = 136 },
+		{ x = 2007, y = 113 },
+		{ x = 2143, y = 124 },
+		{ x = 2265, y = 112 },
 	},
 	fragments = {
 		{ x = 46, y = 160 },
@@ -2028,16 +2062,28 @@ return Arte
 		{ x = 882, y = 123 },
 		{ x = 944, y = 98 },
 		{ x = 1110, y = 160 },
+		{ x = 1323, y = 144 },
+		{ x = 1704, y = 128 },
+		{ x = 1782, y = 160 },
+		{ x = 1969, y = 144 },
+		{ x = 2234, y = 144 },
+		{ x = 2410, y = 160 },
 	},
 	bats = {
 		{ x = 285, y = 154, range = 37, speed = 2.3 },
 		{ x = 628, y = 146, range = 25, speed = 2.8 },
 		{ x = 901, y = 151, range = 42, speed = 2.1 },
+		{ x = 1575, y = 145, range = 23, speed = 2.1 },
+		{ x = 2024, y = 144, range = 24, speed = 2.4 },
+		{ x = 2272, y = 144, range = 23, speed = 2.2 },
 	},
 	mummies = {
 		{ left = 61, right = 82, y = 172, speed = 15 },
 		{ left = 824, right = 849, y = 172, speed = 17 },
 		{ left = 1124, right = 1159, y = 172, speed = 16 },
+		{ left = 1329, right = 1354, y = 156, speed = 16 },
+		{ left = 1722, right = 1744, y = 172, speed = 15 },
+		{ left = 2382, right = 2406, y = 172, speed = 17 },
 	},
 }
 </ProtectedString>
@@ -2493,8 +2539,8 @@ local TextService = game:GetService("TextService")
 Players.CharacterAutoLoads = false
 
 local studio = RunService:IsStudio()
-local store = if studio then nil else DataStoreService:GetDataStore("LuarDeCinzas_Recordes_v1")
-local rankingStore = if studio then nil else DataStoreService:GetDataStore("LuarDeCinzas_Ranking_v1")
+local store = if studio then nil else DataStoreService:GetDataStore("LuarDeCinzas_Recordes_v2")
+local rankingStore = if studio then nil else DataStoreService:GetDataStore("LuarDeCinzas_Ranking_v2")
 local sessionRecords = {}
 local nextSave = {}
 local ranking = {}
@@ -2561,7 +2607,7 @@ recordRequest.OnServerInvoke = function(player, action, milliseconds, name)
 		return ok, record
 	end
 	if action ~= "salvar" or typeof(milliseconds) ~= "number"
-		or milliseconds ~= math.floor(milliseconds) or milliseconds &lt; 1 or milliseconds &gt; 360000
+		or milliseconds ~= math.floor(milliseconds) or milliseconds &lt; 1 or milliseconds &gt; 720000
 		or typeof(name) ~= "string" or #name &gt; 96 then
 		return false
 	end

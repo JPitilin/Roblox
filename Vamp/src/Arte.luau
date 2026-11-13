@@ -49,14 +49,16 @@ local function disk(parent, cx, cy, radius, step, value, z)
 end
 
 function Arte.background(root, level, viewWidth)
-	local sky = Arte.layer(root, "Céu", viewWidth + 330, level.height, 1)
-	local hills = Arte.layer(root, "Colinas", viewWidth + 570, level.height, 3)
+	local skyWidth = viewWidth + math.ceil((level.width - viewWidth) * 0.31)
+	local hillsWidth = viewWidth + math.ceil((level.width - viewWidth) * 0.57)
+	local sky = Arte.layer(root, "Céu", skyWidth, level.height, 1)
+	local hills = Arte.layer(root, "Colinas", hillsWidth, level.height, 3)
 	local random = Random.new(32)
 	for y = 0, 210, 6 do
-		Arte.rect(sky, 0, y, viewWidth + 330, 6, 15 + math.floor(y / 7), 1)
+		Arte.rect(sky, 0, y, skyWidth, 6, 15 + math.floor(y / 7), 1)
 	end
-	for _ = 1, 145 do
-		local x, y = random:NextInteger(1, viewWidth + 310), random:NextInteger(9, 135)
+	for _ = 1, math.floor(skyWidth / 5) do
+		local x, y = random:NextInteger(1, skyWidth - 1), random:NextInteger(9, 135)
 		Arte.rect(sky, x, y, 1, 1, random:NextInteger(48, 121), 2)
 	end
 	disk(sky, 261, 68, 41, 2, 38, 2)
@@ -64,19 +66,19 @@ function Arte.background(root, level, viewWidth)
 	disk(sky, 261, 68, 27, 2, 179, 2)
 	disk(sky, 253, 64, 6, 2, 160, 2)
 	disk(sky, 272, 77, 4, 2, 155, 2)
-	for i = 0, 16 do
+	for i = 0, math.ceil(skyWidth / 42) do
 		local x = i * 42 - 20
 		local y = random:NextInteger(88, 136)
 		Arte.rect(sky, x, y, random:NextInteger(22, 54), 2, 70, 2)
 		Arte.rect(sky, x + 12, y + 2, random:NextInteger(28, 53), 3, 59, 2)
 	end
-	for x = 0, viewWidth + 566, 5 do
+	for x = 0, hillsWidth - 1, 5 do
 		local top = 142 + math.floor(11 * math.sin(x / 58) + 8 * math.cos(x / 21))
 		Arte.rect(hills, x, top, 5, level.height - top, 35, 3)
 		local near = 161 + math.floor(8 * math.sin(x / 33) + 5 * math.sin(x / 14))
 		Arte.rect(hills, x, near, 5, level.height - near, 26, 4)
 	end
-	for _, x in { 190, 455, 686, 840 } do
+	for _, x in { 190, 455, 686, 840, 1090, 1390 } do
 		for i = 0, 3 do
 			local tower = x + 13 * i
 			local top = 125 - (i % 2) * 16

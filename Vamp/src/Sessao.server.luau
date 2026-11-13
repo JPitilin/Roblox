@@ -8,8 +8,8 @@ local TextService = game:GetService("TextService")
 Players.CharacterAutoLoads = false
 
 local studio = RunService:IsStudio()
-local store = if studio then nil else DataStoreService:GetDataStore("LuarDeCinzas_Recordes_v1")
-local rankingStore = if studio then nil else DataStoreService:GetDataStore("LuarDeCinzas_Ranking_v1")
+local store = if studio then nil else DataStoreService:GetDataStore("LuarDeCinzas_Recordes_v2")
+local rankingStore = if studio then nil else DataStoreService:GetDataStore("LuarDeCinzas_Ranking_v2")
 local sessionRecords = {}
 local nextSave = {}
 local ranking = {}
@@ -76,7 +76,7 @@ recordRequest.OnServerInvoke = function(player, action, milliseconds, name)
 		return ok, record
 	end
 	if action ~= "salvar" or typeof(milliseconds) ~= "number"
-		or milliseconds ~= math.floor(milliseconds) or milliseconds < 1 or milliseconds > 360000
+		or milliseconds ~= math.floor(milliseconds) or milliseconds < 1 or milliseconds > 720000
 		or typeof(name) ~= "string" or #name > 96 then
 		return false
 	end
