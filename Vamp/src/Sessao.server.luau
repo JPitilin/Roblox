@@ -3,11 +3,106 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TextService = game:GetService("TextService")
+local HttpService = game:GetService("HttpService")
+local MarketplaceService = game:GetService("MarketplaceService")
 
 -- The prototype renders its own player sprite and has no 3D avatar.
 Players.CharacterAutoLoads = false
 
 local studio = RunService:IsStudio()
+
+-- Set the Creator Hub product IDs here after publishing the experience.
+local packages = {
+	{ fragments = 10, productId = 0 },
+	{ fragments = 25, productId = 0 },
+	{ fragments = 50, productId = 0 },
+}
+local capeCosts = { curta = 3, nevoa = 6 }
+local products = {}
+for _, package in packages do
+	if package.productId > 0 then
+		assert(not products[package.productId], "ID de pacote duplicado")
+		products[package.productId] = package.fragments
+	end
+end
+
+local walletStore = if studio or next(products) == nil then nil
+	else DataStoreService:GetDataStore("LuarDeCinzas_Fragmentos_v1")
+local function emptyWallet()
+	return { balance = 0, owned = {}, receipts = {}, revision = 0 }
+end
+
+local function showWallet(player, wallet)
+	if player and wallet.revision >= (player:GetAttribute("VersaoCarteira") or -1) then
+		player:SetAttribute("VersaoCarteira", wallet.revision)
+		player:SetAttribute("CarteiraLua", HttpService:JSONEncode({
+			balance = wallet.balance,
+			owned = wallet.owned,
+		}))
+	end
+end
+
+local function loadWallet(player)
+	if walletStore then
+		local ok, wallet = pcall(walletStore.GetAsync, walletStore, tostring(player.UserId))
+		if ok then
+			showWallet(player, wallet or emptyWallet())
+		end
+	end
+end
+Players.PlayerAdded:Connect(loadWallet)
+for _, player in Players:GetPlayers() do
+	task.spawn(loadWallet, player)
+end
+
+MarketplaceService.ProcessReceipt = function(receipt)
+	local amount = products[receipt.ProductId]
+	if not walletStore or not amount then
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
+	local ok, wallet = pcall(walletStore.UpdateAsync, walletStore, tostring(receipt.PlayerId), function(previous)
+		local data = previous or emptyWallet()
+		if not data.receipts[receipt.PurchaseId] then
+			data.balance += amount
+			data.revision += 1
+			data.receipts[receipt.PurchaseId] = true
+		end
+		return data
+	end)
+	if not ok then
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
+	showWallet(Players:GetPlayerByUserId(receipt.PlayerId), wallet)
+	return Enum.ProductPurchaseDecision.PurchaseGranted
+end
+
+local shopRequest = Instance.new("RemoteFunction")
+shopRequest.Name = "LojaLua"
+shopRequest.OnServerInvoke = function(player, action, cape)
+	if action == "pacotes" then
+		return packages, walletStore ~= nil
+	end
+	local price = if typeof(cape) == "string" then capeCosts[cape] else nil
+	if action ~= "capa" or not price or not walletStore then
+		return false
+	end
+	local ok, wallet = pcall(walletStore.UpdateAsync, walletStore, tostring(player.UserId), function(previous)
+		local data = previous or emptyWallet()
+		if not data.owned[cape] and data.balance >= price then
+			data.balance -= price
+			data.owned[cape] = true
+			data.revision += 1
+		end
+		return data
+	end)
+	if ok then
+		showWallet(player, wallet)
+		return wallet.owned[cape] == true
+	end
+	return false
+end
+shopRequest.Parent = ReplicatedStorage
+
 local store = if studio then nil else DataStoreService:GetDataStore("LuarDeCinzas_Recordes_v2")
 local rankingStore = if studio then nil else DataStoreService:GetDataStore("LuarDeCinzas_Ranking_v2")
 local sessionRecords = {}

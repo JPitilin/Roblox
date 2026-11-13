@@ -1,5 +1,7 @@
 local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
+local MarketplaceService = game:GetService("MarketplaceService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
@@ -26,7 +28,8 @@ end
 local music = createSound("Trilha do cemitério", "rbxassetid://1842988873", 0.18, true)
 local jumpSound = createSound("Pulo do Nino", "rbxasset://sounds/action_jump.mp3", 0.28, false)
 local hitSound = createSound("Nino atingido", "rbxasset://sounds/ouch.ogg", 0.5, false)
-local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+local localPlayer = Players.LocalPlayer
+local playerGui = localPlayer:WaitForChild("PlayerGui")
 local screen = Instance.new("ScreenGui")
 screen.Name = "Luar de Cinzas"
 screen.ResetOnSpawn = false
@@ -176,6 +179,8 @@ Arte.text(shop, "CAPAS", 12, 7, 105, 16, 14, 240)
 local closeShop = Arte.text(shop, "C  FECHAR", 190, 7, 66, 16, 10, 212, true)
 closeShop.TextXAlignment = Enum.TextXAlignment.Right
 local shopBalance = Arte.text(shop, "", 12, 25, 244, 14, 10, Color3.fromRGB(194, 222, 245))
+local openPackages = Arte.text(shop, "Comprar fragmentos", 12, 134, 244, 14, 10, Color3.fromRGB(194, 222, 245), true)
+openPackages.TextXAlignment = Enum.TextXAlignment.Center
 for i, outfit in outfits do
 	local y = 46 + (i - 1) * 32
 	Arte.text(shop, outfit.name, 12, y, 160, 13, 11, 239)
@@ -186,6 +191,26 @@ for i, outfit in outfits do
 	outfit.button = button
 end
 shop.Visible = false
+
+local packageMenu = Arte.rect(viewport, 58, 45, 268, 151, 19, 11)
+Arte.rect(packageMenu, 0, 0, 268, 1, 134, 11)
+Arte.rect(packageMenu, 0, 150, 268, 1, 134, 11)
+Arte.text(packageMenu, "FRAGMENTOS DE LUA", 12, 7, 170, 16, 13, 240)
+local backToCapes = Arte.text(packageMenu, "VOLTAR", 190, 7, 66, 16, 10, 212, true)
+backToCapes.TextXAlignment = Enum.TextXAlignment.Right
+local walletLabel = Arte.text(packageMenu, "", 12, 27, 244, 13, 10, 210)
+local packageStatus = Arte.text(packageMenu, "", 12, 128, 244, 14, 9, 185)
+local packageButtons = {}
+for i, amount in { 10, 25, 50 } do
+	local y = 46 + (i - 1) * 26
+	Arte.text(packageMenu, string.format("%d fragmentos", amount), 12, y, 120, 19, 11, 239)
+	local button = Arte.text(packageMenu, "", 143, y, 113, 19, 10, 225, true)
+	button.TextXAlignment = Enum.TextXAlignment.Center
+	button.BackgroundColor3 = Color3.fromRGB(53, 55, 58)
+	button.Interactable = false
+	packageButtons[i] = button
+end
+packageMenu.Visible = false
 
 local leaderboard = Arte.rect(viewport, 48, 42, 288, 161, 19, 11)
 Arte.rect(leaderboard, 0, 0, 288, 1, 134, 11)
@@ -219,6 +244,8 @@ local accumulator = 0
 local collected = 0
 local foundFragments = 0
 local owned = { original = true }
+local purchasedWallet = { balance = 0, owned = {} }
+local exchanging = false
 local equipped = "original"
 local mistSlot = 1
 local nextMist = 0
@@ -237,9 +264,9 @@ local function capeProgress()
 	for _, outfit in outfits do
 		if owned[outfit.id] then
 			balance -= outfit.cost
-			if outfit.cost > 0 then
-				unlocked += 1
-			end
+		end
+		if outfit.cost > 0 and (owned[outfit.id] or purchasedWallet.owned[outfit.id]) then
+			unlocked += 1
 		end
 	end
 	return balance, unlocked
@@ -249,29 +276,62 @@ local function updateShop()
 	local balance, unlocked = capeProgress()
 	shopToggle.Text = string.format("C CAPAS %d/%d", unlocked + 1, #outfits)
 	fragmentCounter.Text = string.format("LUA %d/%d", foundFragments, #fragments)
-	shopBalance.Text = string.format("Saldo: %d fragmentos  |  Capas: %d/%d", balance, unlocked + 1, #outfits)
+	shopBalance.Text = string.format("Mapa: %d   Comprados: %d   Capas: %d/%d", balance, purchasedWallet.balance, unlocked + 1, #outfits)
+	walletLabel.Text = string.format("Saldo comprado: %d", purchasedWallet.balance)
 	for _, outfit in outfits do
-		local available = equipped ~= outfit.id and (owned[outfit.id] or balance >= outfit.cost)
+		local unlockedCape = owned[outfit.id] or purchasedWallet.owned[outfit.id]
+		local available = equipped ~= outfit.id and (unlockedCape or balance >= outfit.cost or purchasedWallet.balance >= outfit.cost)
 		local button = outfit.button
-		button.Interactable = available
+		button.Interactable = available and not exchanging
 		button.BackgroundTransparency = if available then 0 else 0.55
 		button.Text = if equipped == outfit.id then "EM USO"
-			elseif owned[outfit.id] then "EQUIPAR"
-			elseif available then string.format("TROCAR %d", outfit.cost)
-			else string.format("FALTAM %d", outfit.cost - balance)
+			elseif unlockedCape then "EQUIPAR"
+			elseif balance >= outfit.cost then string.format("TROCAR %d", outfit.cost)
+			elseif available then string.format("USAR %d", outfit.cost)
+			else string.format("FALTAM %d", outfit.cost - math.max(balance, purchasedWallet.balance))
 	end
+end
+
+local function refreshWallet()
+	local encoded = localPlayer:GetAttribute("CarteiraLua")
+	if encoded then
+		purchasedWallet = HttpService:JSONDecode(encoded)
+		updateShop()
+	end
+end
+localPlayer:GetAttributeChangedSignal("CarteiraLua"):Connect(refreshWallet)
+refreshWallet()
+
+local function requestShop(action, ...)
+	local remote = ReplicatedStorage:FindFirstChild("LojaLua")
+	if not remote then
+		return false
+	end
+	return pcall(remote.InvokeServer, remote, action, ...)
 end
 
 for _, outfit in outfits do
 	outfit.button.Activated:Connect(function()
-		if not shop.Visible or equipped == outfit.id then
+		if not shop.Visible or equipped == outfit.id or exchanging then
 			return
 		end
-		if not owned[outfit.id] then
-			if capeProgress() < outfit.cost then
+		if not (owned[outfit.id] or purchasedWallet.owned[outfit.id]) then
+			if capeProgress() >= outfit.cost then
+				owned[outfit.id] = true
+			elseif purchasedWallet.balance >= outfit.cost then
+				exchanging = true
+				updateShop()
+				local ok, unlocked = requestShop("capa", outfit.id)
+				exchanging = false
+				if not ok or not unlocked then
+					updateShop()
+					shopBalance.Text = "Não foi possível trocar. Tente novamente."
+					return
+				end
+				refreshWallet()
+			else
 				return
 			end
-			owned[outfit.id] = true
 		end
 		equipped = outfit.id
 		updateShop()
@@ -281,6 +341,7 @@ end
 local function toggleMenu(menu)
 	local open = not menu.Visible
 	shop.Visible = open and menu == shop
+	packageMenu.Visible = open and menu == packageMenu
 	leaderboard.Visible = open and menu == leaderboard
 	panel.Visible = (won or lives == 0) and not open
 	left, right, jumpQueued = false, false, false
@@ -291,6 +352,55 @@ local function toggleShop()
 end
 shopToggle.Activated:Connect(toggleShop)
 closeShop.Activated:Connect(toggleShop)
+
+local packageRevision = 0
+local availableProducts = {}
+for i, button in packageButtons do
+	button.Activated:Connect(function()
+		local productId = availableProducts[i]
+		if packageMenu.Visible and productId then
+			local ok = pcall(MarketplaceService.PromptProductPurchase, MarketplaceService, localPlayer, productId)
+			if not ok then
+				packageStatus.Text = "Compra indisponível. Tente novamente."
+			end
+		end
+	end)
+end
+openPackages.Activated:Connect(function()
+	toggleMenu(packageMenu)
+	packageRevision += 1
+	local revision = packageRevision
+	table.clear(availableProducts)
+	for _, button in packageButtons do
+		button.Text = "INDISPONÍVEL"
+		button.Interactable = false
+	end
+	packageStatus.Text = "Verificando pacotes..."
+	local ok, packages, enabled = requestShop("pacotes")
+	if revision ~= packageRevision or not packageMenu.Visible then
+		return
+	end
+	if not ok or not enabled then
+		packageStatus.Text = "Compras em Robux ainda não ativadas."
+		return
+	end
+	packageStatus.Text = ""
+	for i, package in packages do
+		if package.productId > 0 then
+			local loaded, info = pcall(MarketplaceService.GetProductInfoAsync, MarketplaceService, package.productId, Enum.InfoType.Product)
+			if revision ~= packageRevision or not packageMenu.Visible then
+				return
+			end
+			if loaded and info.IsForSale and info.PriceInRobux then
+				local button = packageButtons[i]
+				button.Text = string.format("%d Robux", info.PriceInRobux)
+				availableProducts[i] = package.productId
+				button.Interactable = true
+			end
+		end
+	end
+end)
+backToCapes.Activated:Connect(toggleShop)
 
 local function updateCounter()
 	counter.Text = string.format("RELÍQUIAS  %d/%d", collected, #relics)
@@ -482,7 +592,7 @@ ContextActionService:BindActionAtPriority("LuarControls", function(_, state, inp
 		end
 		return Enum.ContextActionResult.Sink
 	end
-	if shop.Visible or leaderboard.Visible then
+	if shop.Visible or packageMenu.Visible or leaderboard.Visible then
 		return Enum.ContextActionResult.Sink
 	end
 	if won or lives == 0 then
@@ -617,7 +727,8 @@ end
 
 local function render(dt)
 	local direction = (if right then 1 else 0) - (if left then 1 else 0)
-	if not won and lives > 0 and not shop.Visible and not leaderboard.Visible then
+	local playing = not won and lives > 0 and not shop.Visible and not packageMenu.Visible and not leaderboard.Visible
+	if playing then
 		attemptTime += math.min(dt, Fase.timeLimit - runTime)
 		runTime = math.min(Fase.timeLimit, runTime + dt)
 		if direction ~= 0 then
@@ -674,7 +785,7 @@ local function render(dt)
 	for _, fragment in fragments do
 		fragment.art.Position = UDim2.fromOffset(fragment.x - 3, math.round(fragmentY(fragment)) - 3)
 	end
-	renderMist(not won and lives > 0 and not shop.Visible and not leaderboard.Visible and (direction ~= 0 or not player.grounded))
+	renderMist(playing and not won and lives > 0 and (direction ~= 0 or not player.grounded))
 	for _, bat in bats do
 		bat.art.Position = UDim2.fromOffset(math.round(bat.x or bat.path.x) - 7, math.round(bat.y or bat.path.y) - 3)
 		local raised = math.floor(elapsed * 9) % 2 == 0
