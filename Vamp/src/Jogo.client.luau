@@ -119,12 +119,14 @@ shopToggle.TextXAlignment = Enum.TextXAlignment.Center
 local panel = Arte.rect(viewport, 64, 65, 256, 90, 15, 11)
 Arte.rect(panel, 0, 0, 256, 1, 153, 11)
 Arte.rect(panel, 0, 89, 256, 1, 153, 11)
-local title = Arte.text(panel, "Cripta alcançada", 12, 12, 232, 24, 18, 244)
+local title = Arte.text(panel, "", 12, 10, 232, 24, 18, 244)
 title.TextXAlignment = Enum.TextXAlignment.Center
 local result = Arte.text(panel, "", 12, 39, 232, 16, 11, 209)
 result.TextXAlignment = Enum.TextXAlignment.Center
-local replay = Arte.text(panel, "R  jogar novamente", 12, 63, 232, 13, 10, 177)
+local replay = Arte.text(panel, "Recomeçar  [R]", 65, 62, 126, 19, 11, 245, true)
 replay.TextXAlignment = Enum.TextXAlignment.Center
+replay.BackgroundColor3 = Color3.fromRGB(56, 58, 64)
+replay.BackgroundTransparency = 0
 panel.Visible = false
 
 local shop = Arte.rect(viewport, 58, 45, 268, 151, 19, 11)
@@ -160,6 +162,7 @@ local mistSlot = 1
 local nextMist = 0
 local checkpoint = false
 local won = false
+local victoryBlink = 0
 local left = false
 local right = false
 local jumpQueued = false
@@ -244,6 +247,8 @@ end
 
 local function restart()
 	won = false
+	victoryBlink = 0
+	title.TextTransparency = 0
 	lives = Fase.startingLives
 	checkpoint = false
 	elapsed = 0
@@ -261,6 +266,12 @@ local function restart()
 	updateCounter()
 end
 
+replay.Activated:Connect(function()
+	if panel.Visible and (won or lives == 0) then
+		restart()
+	end
+end)
+
 local function loseLife(reason)
 	lives -= 1
 	updateCounter()
@@ -270,7 +281,8 @@ local function loseLife(reason)
 	end
 	left, right, jumpQueued = false, false, false
 	accumulator = 0
-	title.Text = "Fim de jogo"
+	title.Text = "GAME OVER"
+	title.TextTransparency = 0
 	result.Text = reason
 	panel.Visible = true
 end
@@ -378,7 +390,8 @@ local function simulate(direction)
 	local door = Fase.exit
 	if Movimento.touches(player, door.x - 6, door.y - 25, 12, 25) then
 		won = true
-		title.Text = "Cripta alcançada"
+		title.Text = "CONGRATULATION"
+		title.TextTransparency = 0
 		result.Text = string.format("Tempo %s  |  Relíquias %d/%d", formatTime(math.floor(runTime)), collected, #relics)
 		panel.Visible = true
 	end
@@ -421,6 +434,10 @@ local function render(dt)
 				simulate(direction)
 			end
 		end
+	end
+	if won and panel.Visible then
+		victoryBlink = (victoryBlink + dt) % 1.2
+		title.TextTransparency = if victoryBlink < 0.8 then 0 else 1
 	end
 	local seconds = math.ceil(Fase.timeLimit - runTime)
 	if shownSeconds ~= seconds then
