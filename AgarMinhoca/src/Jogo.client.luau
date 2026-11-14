@@ -1,0 +1,313 @@
+-- AgarMinhoca: prototipo solo. Simulacao local, sem persistencia ou multiplayer.
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Input = game:GetService("UserInputService")
+local player = Players.LocalPlayer
+local rng = Random.new()
+local WORLD, FOOD_COUNT = 2200, 420
+local colors = {Color3.fromRGB(77,230,180), Color3.fromRGB(255,126,152), Color3.fromRGB(160,133,255), Color3.fromRGB(255,199,87), Color3.fromRGB(74,190,255)}
+local gui = Instance.new("ScreenGui")
+gui.Name = "AgarMinhoca"
+gui.IgnoreGuiInset = true
+gui.ResetOnSpawn = false
+gui.DisplayOrder = 10
+gui.Parent = player:WaitForChild("PlayerGui")
+local function frame(parent, color, size, pos)
+    local f = Instance.new("Frame")
+    f.BorderSizePixel = 0
+    f.BackgroundColor3 = color
+    f.Size = size or UDim2.fromOffset(10,10)
+    f.Position = pos or UDim2.fromOffset(0,0)
+    f.Parent = parent
+    return f
+end
+local function round(f, radius)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(radius or 1,0)
+    c.Parent = f
+end
+local function label(parent, text, size, pos, fontSize)
+    local l = Instance.new("TextLabel")
+    l.BackgroundTransparency = 1
+    l.TextColor3 = Color3.fromRGB(232,241,250)
+    l.Font = Enum.Font.GothamBold
+    l.TextSize = fontSize or 16
+    l.Text = text
+    l.Size = size
+    l.Position = pos
+    l.Parent = parent
+    return l
+end
+local bg = frame(gui, Color3.fromRGB(12,19,33), UDim2.fromScale(1,1))
+local arena = frame(bg, Color3.fromRGB(20,32,49))
+arena.ClipsDescendants = true
+local dots = {}
+for i=0,22 do
+    local a = frame(arena, Color3.fromRGB(27,42,61))
+    local b = frame(arena, Color3.fromRGB(27,42,61))
+    table.insert(dots, {a,b,i*100})
+end
+local food = {}
+local worms = {}
+local me
+local running = false
+local best = 0
+local captures = 0
+local elapsed = 0
+local camera = Vector2.new(WORLD/2,WORLD/2)
+local zoom = 1
+local touchTarget = nil
+local boosting = false
+local function radius(w) return 10 + math.sqrt(w.mass)*1.5 end
+local function randomPos() return Vector2.new(rng:NextNumber(70,WORLD-70), rng:NextNumber(70,WORLD-70)) end
+local function circle(parent, color)
+    local c = frame(parent, color)
+    c.AnchorPoint = Vector2.new(.5,.5)
+    round(c)
+    return c
+end
+for i=1,FOOD_COUNT do
+    food[i] = {pos=randomPos(), view=circle(arena,colors[rng:NextInteger(1,#colors)])}
+end
+local function makeWorm(name, mass, color, human)
+    local w = {name=name,mass=mass,pos=randomPos(),dir=Vector2.new(1,0),trail={},parts={},human=human,shield=4,decision=0,target=randomPos()}
+    for i=1,13 do
+        w.parts[i] = circle(arena,color)
+        w.parts[i].ZIndex = 20-i
+        w.trail[i] = w.pos-Vector2.new(i*8,0)
+    end
+    w.eye1 = circle(w.parts[1],Color3.fromRGB(255,255,255))
+    w.eye2 = circle(w.parts[1],Color3.fromRGB(255,255,255))
+    for _, eye in {w.eye1,w.eye2} do
+        eye.Size=UDim2.fromScale(.24,.24)
+        eye.ZIndex=21
+        local pupil=circle(eye,Color3.fromRGB(18,25,40))
+        pupil.Size=UDim2.fromScale(.5,.5)
+        pupil.Position=UDim2.fromScale(.65,.5)
+        pupil.ZIndex=22
+    end
+    w.eye1.Position=UDim2.fromScale(.68,.30)
+    w.eye2.Position=UDim2.fromScale(.68,.70)
+    w.tag=label(arena,name,UDim2.fromOffset(180,22),UDim2.new(),13)
+    w.tag.AnchorPoint=Vector2.new(.5,1)
+    w.tag.ZIndex=25
+    table.insert(worms,w)
+    return w
+end
+local hud = frame(bg,Color3.fromRGB(17,26,43),UDim2.new(1,0,0,84))
+hud.ZIndex=40
+local title = label(hud,"AGAR MINHOCA",UDim2.new(.55,0,0,30),UDim2.fromOffset(18,12),23)
+title.TextXAlignment=Enum.TextXAlignment.Left
+title.ZIndex=41
+local stats=label(hud,"",UDim2.new(.8,0,0,24),UDim2.fromOffset(18,46),14)
+stats.TextXAlignment=Enum.TextXAlignment.Left
+stats.ZIndex=41
+local board=label(bg,"",UDim2.fromOffset(190,190),UDim2.new(1,-202,0,100),14)
+board.TextXAlignment=Enum.TextXAlignment.Left
+board.TextYAlignment=Enum.TextYAlignment.Top
+board.ZIndex=45
+local help=label(bg,"Mouse ou WASD: mover  •  Espaço: acelerar  •  R: reiniciar",UDim2.new(1,-24,0,44),UDim2.new(0,12,1,-48),14)
+help.TextWrapped=true
+help.ZIndex=45
+local function button(parent,text,size,pos)
+    local b=Instance.new("TextButton")
+    b.Text=text
+    b.Font=Enum.Font.GothamBold
+    b.TextSize=18
+    b.TextColor3=Color3.fromRGB(10,26,30)
+    b.BackgroundColor3=colors[1]
+    b.Size=size
+    b.Position=pos
+    b.ZIndex=65
+    b.Parent=parent
+    round(b,.15)
+    return b
+end
+local overlay=frame(bg,Color3.fromRGB(10,16,28),UDim2.fromScale(1,1))
+overlay.BackgroundTransparency=.12
+overlay.ZIndex=60
+local modal=frame(overlay,Color3.fromRGB(24,37,55),UDim2.new(.86,0,0,340),UDim2.fromScale(.5,.5))
+modal.AnchorPoint=Vector2.new(.5,.5)
+modal.ZIndex=61
+round(modal,.04)
+local constraint=Instance.new("UISizeConstraint")
+constraint.MaxSize=Vector2.new(600,340)
+constraint.Parent=modal
+local heading=label(modal,"AGAR MINHOCA",UDim2.new(1,-24,0,54),UDim2.fromOffset(12,18),30)
+heading.ZIndex=62
+local description=label(modal,"Coma bolinhas. Cresça. Domine a arena!\n\nTenha 20% mais massa para capturar outra minhoca.\nFuja das maiores. Acelerar consome massa.\n\nProtótipo solo • 9 bots • proteção inicial de 4 segundos",UDim2.new(1,-32,0,165),UDim2.fromOffset(16,78),16)
+description.TextWrapped=true
+description.ZIndex=62
+local play=button(modal,"JOGAR",UDim2.new(.7,0,0,52),UDim2.new(.15,0,1,-72))
+local boostButton=button(bg,"TURBO",UDim2.fromOffset(100,52),UDim2.new(1,-116,1,-112))
+boostButton.Visible=Input.TouchEnabled
+boostButton.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.Touch then boosting=true end end)
+boostButton.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.Touch then boosting=false end end)
+local function reset()
+    for _,w in worms do
+        for _,p in w.parts do p:Destroy() end
+        w.tag:Destroy()
+    end
+    table.clear(worms)
+    captures=0
+    elapsed=0
+    boosting=false
+    touchTarget=nil
+    me=makeWorm(player.DisplayName,25,colors[1],true)
+    me.pos=Vector2.new(WORLD/2,WORLD/2)
+    for i=1,13 do me.trail[i]=me.pos-Vector2.new(i*8,0) end
+    camera=me.pos
+    for i=1,9 do
+        local w=makeWorm(({"Pipoca","Jujuba","ZigZag","Kiwi","Bolota","Noodle","Pixel","Tico","Pingo"})[i],15+i*9,colors[(i%#colors)+1],false)
+        while (w.pos-me.pos).Magnitude<300 do w.pos=randomPos() end
+        for j=1,13 do w.trail[j]=w.pos-Vector2.new(j*8,0) end
+    end
+    for _,f in food do f.pos=randomPos() end
+    overlay.Visible=false
+    running=true
+end
+play.Activated:Connect(reset)
+Input.InputBegan:Connect(function(i,processed)
+    if processed then return end
+    if i.KeyCode==Enum.KeyCode.R then reset() end
+    if i.UserInputType==Enum.UserInputType.Touch then touchTarget=Vector2.new(i.Position.X,i.Position.Y) end
+end)
+Input.TouchMoved:Connect(function(i,processed)
+    if not processed then touchTarget=Vector2.new(i.Position.X,i.Position.Y) end
+end)
+Input.TouchEnded:Connect(function() touchTarget=nil boosting=false end)
+local function defeat(w, winner)
+    winner.mass+=w.mass*.75
+    if winner.human then captures+=1 end
+    if w.human then
+        running=false
+        best=math.max(best,math.floor(w.mass))
+        heading.Text="FIM DE PARTIDA"
+        description.Text=string.format("%s capturou você!\n\nMassa: %d  •  Capturas: %d  •  Tempo: %ds\nRecorde desta sessão: %d\n\nComa bolinhas antes de enfrentar as maiores.",winner.name,w.mass,captures,elapsed,best)
+        play.Text="JOGAR NOVAMENTE"
+        overlay.Visible=true
+    else
+        w.mass=rng:NextNumber(20,65)
+        w.pos=randomPos()
+        w.shield=4
+        for i=1,13 do w.trail[i]=w.pos end
+    end
+end
+local boardClock=0
+RunService.RenderStepped:Connect(function(delta)
+    if not me then return end
+    local dt=math.min(delta,.05)
+    local size=bg.AbsoluteSize
+    local center=Vector2.new(size.X/2,size.Y/2+25)
+    if running then
+        elapsed+=dt
+        for _,w in worms do
+            w.shield=math.max(0,w.shield-dt)
+            local desired=Vector2.zero
+            local turbo=false
+            if w.human then
+                local x=(Input:IsKeyDown(Enum.KeyCode.D) and 1 or 0)-(Input:IsKeyDown(Enum.KeyCode.A) and 1 or 0)
+                local y=(Input:IsKeyDown(Enum.KeyCode.S) and 1 or 0)-(Input:IsKeyDown(Enum.KeyCode.W) and 1 or 0)
+                desired=Vector2.new(x,y)
+                if desired.Magnitude==0 then
+                    local pointer=touchTarget or (not Input.TouchEnabled and Input:GetMouseLocation())
+                    if pointer then
+                        local d=pointer-center
+                        if d.Magnitude>12 then desired=d.Unit*math.min(1,d.Magnitude/85) end
+                    end
+                end
+                turbo=(boosting or Input:IsKeyDown(Enum.KeyCode.Space)) and w.mass>18
+            else
+                w.decision-=dt
+                if w.decision<=0 then
+                    w.decision=.22+rng:NextNumber()*.18
+                    local nearest,dist=nil,math.huge
+                    for _,f in food do
+                        local d=(f.pos-w.pos).Magnitude
+                        if d<dist then nearest=f.pos dist=d end
+                    end
+                    w.target=nearest or randomPos()
+                    for _,other in worms do
+                        if other~=w and (other.pos-w.pos).Magnitude<260 then
+                            if other.mass>w.mass*1.2 then
+                                w.target=w.pos+(w.pos-other.pos)*3
+                                break
+                            elseif w.mass>other.mass*1.2 and other.shield<=0 then w.target=other.pos end
+                        end
+                    end
+                end
+                local d=w.target-w.pos
+                if d.Magnitude>2 then desired=d.Unit end
+            end
+            local speed=math.max(65,155-w.mass*.14)*(turbo and 1.75 or 1)
+            if turbo then w.mass=math.max(18,w.mass-dt*3) end
+            if desired.Magnitude>0 then
+                w.dir=w.dir:Lerp(desired.Unit,math.min(1,dt*9))
+                w.pos+=desired*speed*dt
+            end
+            local r=radius(w)
+            w.pos=Vector2.new(math.clamp(w.pos.X,r,WORLD-r),math.clamp(w.pos.Y,r,WORLD-r))
+            w.trail[1]=w.pos
+            for i=2,13 do
+                local d=w.trail[i]-w.trail[i-1]
+                local spacing=r*.52
+                if d.Magnitude>spacing then w.trail[i]=w.trail[i-1]+d.Unit*spacing end
+            end
+            for _,f in food do
+                if (f.pos-w.pos).Magnitude<r+4 then w.mass+=1 f.pos=randomPos() end
+            end
+            -- Soft decay prevents unlimited growth during long prototype sessions.
+            if w.mass>250 then w.mass-=dt*(w.mass-250)*.015 end
+        end
+        for i=1,#worms do
+            if not running then break end
+            for j=i+1,#worms do
+                local a,b=worms[i],worms[j]
+                if a.shield<=0 and b.shield<=0 then
+                    if b.mass>a.mass then a,b=b,a end
+                    if a.mass>=b.mass*1.2 and (a.pos-b.pos).Magnitude<radius(a)-radius(b)*.25 then defeat(b,a) end
+                end
+                if not running then break end
+            end
+        end
+    end
+    camera=camera:Lerp(me.pos,math.min(1,dt*8))
+    local targetZoom=math.clamp(math.min(size.X/1100,size.Y/740)/(1+me.mass/700),.28,1.1)
+    zoom+=(targetZoom-zoom)*math.min(1,dt*5)
+    arena.Size=UDim2.fromOffset(WORLD*zoom,WORLD*zoom)
+    arena.Position=UDim2.fromOffset(center.X-camera.X*zoom,center.Y-camera.Y*zoom)
+    for _,line in dots do
+        line[1].Position=UDim2.fromOffset(line[3]*zoom,0)
+        line[1].Size=UDim2.new(0,1,1,0)
+        line[2].Position=UDim2.fromOffset(0,line[3]*zoom)
+        line[2].Size=UDim2.new(1,0,0,1)
+    end
+    for _,f in food do
+        f.view.Position=UDim2.fromOffset(f.pos.X*zoom,f.pos.Y*zoom)
+        f.view.Size=UDim2.fromOffset(8*zoom,8*zoom)
+    end
+    for _,w in worms do
+        local count=math.clamp(4+math.floor(w.mass/20),4,13)
+        for i,p in w.parts do
+            p.Visible=i<=count
+            local diameter=radius(w)*2*zoom*(1-(i-1)*.035)
+            p.Size=UDim2.fromOffset(diameter,diameter)
+            p.Position=UDim2.fromOffset(w.trail[i].X*zoom,w.trail[i].Y*zoom)
+            p.BackgroundTransparency=w.shield>0 and .35 or 0
+        end
+        w.parts[1].Rotation=math.deg(math.atan2(w.dir.Y,w.dir.X))
+        w.tag.Position=UDim2.fromOffset(w.pos.X*zoom,(w.pos.Y-radius(w)-8)*zoom)
+        w.tag.Text=w.name.." · "..math.floor(w.mass)..(w.shield>0 and " ◇" or "")
+    end
+    best=math.max(best,math.floor(me.mass))
+    stats.Text=string.format("Massa %d   |   Capturas %d   |   Recorde %d%s",me.mass,captures,best,me.shield>0 and "   |   PROTEGIDO" or "")
+    boardClock+=dt
+    if boardClock>.3 then
+        boardClock=0
+        local sorted=table.clone(worms)
+        table.sort(sorted,function(a,b) return a.mass>b.mass end)
+        local rows={"TOP 5 DA ARENA",""}
+        for i=1,5 do table.insert(rows,string.format("%d. %s  %d",i,sorted[i].name,sorted[i].mass)) end
+        board.Text=table.concat(rows,"\n")
+    end
+end)
